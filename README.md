@@ -7,7 +7,7 @@ OptiRanker is a Python-based tool designed to simulate, rank, and optimize pre-c
 ### **Key Features**
 - Simulate the ranking process of drugs and predictors with varying levels of noise.
 - Optimize subsets of drugs and individuals to reproduce accurate algorithm rankings.
-- Evaluate and compare the robustness of WINTHER, SIMS, and DDPP drug prioritization algorithms.
+- Evaluate and compare the robustness of WINTHER, SIMS, and DDPP drug prioritization algorithms as an examples In-Silico trial and pre-clinical trial optimization.
 - Visualize results with detailed heatmaps, PCA plots, and statistical analyses.
 
 ---
@@ -24,12 +24,6 @@ OptiRanker is a Python-based tool designed to simulate, rank, and optimize pre-c
 ### **Languages and Libraries**
 - **Core Language**: Python (version 3.8+)
 - **Libraries**: NumPy, Pandas, Scikit-learn, Matplotlib, Seaborn, Plotly, Dash, PySimpleGUI
-
-### **Dependencies**
-- **Datasets**: Cancer Cell-Line Encyclopedia (CCLE) transcriptomics and IC50 data
-- **Predictor Scores**: Algorithm outputs from WINTHER, SIMS, and DDPP
-
----
 
 ## **Installation**
 
