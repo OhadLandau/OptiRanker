@@ -53,6 +53,7 @@ pip install -r requirements.txt
 
 ### **4. Download CCLE Dataset**
 - Download transcriptomics and IC50 datasets from the official [CCLE website](https://depmap.org/portal/).
+
 ---
 
 ## **Repository Structure**
@@ -78,6 +79,13 @@ OptiRanker/
 ### **1. Full Simulation Pipeline**
 This script generates predictors with varying levels of noise and evaluates algorithm rankings based on simulated data.
 
+#### **User Inputs:**
+- Number of iterations for simulations.
+- Dimensions of the dataset: number of individuals, drugs, and predictors.
+- Minimum correlation threshold for rankings.
+- Acceptable correlation distance.
+
+Run the script:
 ```bash
 python scripts/FullSimulation.py
 ```
@@ -85,6 +93,12 @@ python scripts/FullSimulation.py
 ### **2. Real-World Dataset Pipeline**
 This script processes user-provided CCLE datasets, evaluates algorithm performance, and visualizes the results.
 
+#### **User Inputs:**
+- Select predictor and results files via a graphical interface.
+- Choose whether data is already ranked or needs preprocessing.
+- Enter minimum correlation threshold and number of subsets to find.
+
+Run the script:
 ```bash
 python scripts/InputData.py
 ```
@@ -112,16 +126,32 @@ python scripts/InputData.py
 ---
 
 ## **Example Outputs**
-- **Heatmaps**: Visualize correlations for varying subsets of drugs and individuals.
-- **Boxplots**: Show the impact of noise on predictor accuracy.
-- **PCA Clustering**: Evaluate algorithm separation in feature space.
+Below are sample outputs from OptiRanker. Click any image for full resolution:
+
+<div style="display: flex; flex-wrap: wrap; gap: 10px;">
+    <a href="results/Fig1A overflow.png" target="_blank"><img src="results/Fig1A overflow.png" alt="Overflow of OptiRanker" width="200"/></a>
+    <a href="results/Fig2 - 100simX20iX20px20D.png" target="_blank"><img src="results/Fig2 - 100simX20iX20px20D.png" alt="100 Simulations with 20x20x20 inputs" width="200"/></a>
+    <a href="results/Figure3 - InformedSelection.png" target="_blank"><img src="results/Figure3 - InformedSelection.png" alt="Informed Selection Process" width="200"/></a>
+    <a href="results/fIG4hEATMAP.png" target="_blank"><img src="results/fIG4hEATMAP.png" alt="Optimization Subsets Heatmap" width="200"/></a>
+</div>
 
 ---
 
-## **Visualization Example**
-Example output from a PCA plot comparing WINTHER, SIMS, and DDPP algorithms:
+### **Reference**
+See full work:  
+**OptiRanker: An Advanced Tool for Simulation and Comparative Analysis of Drug Prioritization Algorithms in In Vivo Trials**  
+Ohad Landau, Kartheeswaran Thangathurai, Shai Magidi, Eitan Rubin
 
-![Optimization Heatmap](results/pca_plot_example.png)
+---
+
+## **In-Silico Sample Trial**
+The repository includes a folder named `In-Silico Sample Trial`, containing the following subfolders:
+- **DDPP**: Results for DDPP algorithm.
+- **WIN**: Results for WIN algorithm.
+- **SIMS**: Results for SIMS algorithm.
+- **ResultsCCLE**: CCLE IC50 ground truth results.
+
+These folders allow users to recreate the results found in the paper and provide a sample in-silico trial to explore.
 
 ---
 
@@ -130,6 +160,7 @@ Example output from a PCA plot comparing WINTHER, SIMS, and DDPP algorithms:
 ### **Development Setup**
 ```bash
 # Install development dependencies
-pip install -r requirements-.txt
+pip install -r requirements-dev.txt
 ```
 
+---
