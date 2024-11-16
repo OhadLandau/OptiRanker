@@ -35,7 +35,7 @@ OptiRanker is a Python-based tool designed to simulate, rank, and optimize pre-c
 
 ### **1. Clone the Repository**
 ```bash
-git clone https://github.com/yourusername/OptiRanker.git
+git clone https://github.com/OhadLandau/OptiRanker.git
 cd OptiRanker
 ```
 
@@ -48,14 +48,11 @@ venv\Scripts\activate     # For Windows
 
 ### **3. Install Required Libraries**
 ```bash
-pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
 ### **4. Download CCLE Dataset**
 - Download transcriptomics and IC50 datasets from the official [CCLE website](https://depmap.org/portal/).
-- Save the datasets in a folder named `data/` within the repository.
-
 ---
 
 ## **Repository Structure**
@@ -66,12 +63,12 @@ OptiRanker/
 ├── scripts/
 │   ├── FullSimulation.py       # Simulation-based pipeline
 │   ├── InputData.py            # Real-world dataset-based pipeline
-│   └── utils.py                # Utility functions shared between scripts
+│   
 │
 ├── results/                    # Results folder for outputs, heatmaps, etc.
 ├── README.md                   # Documentation
 ├── requirements.txt            # Dependencies list
-└── LICENSE                     # License information
+
 ```
 
 ---
@@ -124,7 +121,7 @@ python scripts/InputData.py
 ## **Visualization Example**
 Example output from a PCA plot comparing WINTHER, SIMS, and DDPP algorithms:
 
-![PCA Clustering Example](results/pca_plot_example.png)
+![Optimization Heatmap](results/pca_plot_example.png)
 
 ---
 
@@ -133,11 +130,6 @@ Example output from a PCA plot comparing WINTHER, SIMS, and DDPP algorithms:
 ### **Development Setup**
 ```bash
 # Install development dependencies
-pip install -r requirements-dev.txt
+pip install -r requirements-.txt
 ```
 
-### **Linting**
-```bash
-# Run linting to ensure code quality
-flake8 scripts/
-```
