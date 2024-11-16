@@ -15,7 +15,7 @@ OptiRanker is a Python-based tool designed to simulate, rank, and optimize pre-c
 ## **Applications**
 - **Simulated Trial Optimization**: Reduce experimental costs for in vivo validation of drug prioritization algorithms.
 - **Empirical Evaluation**: Analyze accuracy decay in noisy predictors.
-- **Real-World Validation**: Use CCLE datasets for IC50 predictions and evaluate against WINTHER, SIMS, and DDPP algorithms.
+- **Real-World Validation**: Use your own data to compare with algorithm predictions. Leverage CCLE datasets for IC50 predictions and evaluate rankings independently or against WINTHER, SIMS, and DDPP using files in the In-Silico Sample Trial folder
 
 ---
 
