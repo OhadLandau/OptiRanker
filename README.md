@@ -1,29 +1,42 @@
-OptiRanker: A Framework for Optimizing Pre-Clinical Drug Prioritization
-Overview
+# **OptiRanker: A Framework for Optimizing Pre-Clinical Drug Prioritization**
+
+## **Overview**
 OptiRanker is a Python-based tool designed to simulate, rank, and optimize pre-clinical drug prioritization algorithms. This framework systematically evaluates the performance of prioritization algorithms under various experimental conditions. By identifying the smallest subsets of drugs and individuals required to differentiate between algorithms, OptiRanker minimizes experimental costs while maximizing statistical power.
 
-Key Features
-Simulate the ranking process of drugs and predictors with varying levels of noise.
-Optimize subsets of drugs and individuals to reproduce accurate algorithm rankings.
-Evaluate and compare the robustness of WINTHER, SIMS, and DDPP drug prioritization algorithms.
-Visualize results with detailed heatmaps, PCA plots, and statistical analyses.
-Applications
-Simulated Trial Optimization: Reduce experimental costs for in vivo validation of drug prioritization algorithms.
-Empirical Evaluation: Analyze accuracy decay in noisy predictors.
-Real-World Validation: Use CCLE datasets for IC50 predictions and evaluate against WINTHER, SIMS, and DDPP algorithms.
-Technical Details
-Languages and Libraries
-Core Language: Python (version 3.8+)
-Libraries: NumPy, Pandas, Scikit-learn, Matplotlib, Seaborn, Plotly, Dash, PySimpleGUI
-Dependencies
-Datasets: Cancer Cell-Line Encyclopedia (CCLE) transcriptomics and IC50 data
-Predictor Scores: Algorithm outputs from WINTHER, SIMS, and DDPP
-Installation
-1. Clone the Repository
-bash
-Copy code
-git clone https://github.com/yourusername/OptiRanker.git
+### **Key Features**
+- Simulate the ranking process of drugs and predictors with varying levels of noise.
+- Optimize subsets of drugs and individuals to reproduce accurate algorithm rankings.
+- Evaluate and compare the robustness of WINTHER, SIMS, and DDPP drug prioritization algorithms.
+- Visualize results with detailed heatmaps, PCA plots, and statistical analyses.
+
+---
+
+## **Applications**
+- **Simulated Trial Optimization**: Reduce experimental costs for in vivo validation of drug prioritization algorithms.
+- **Empirical Evaluation**: Analyze accuracy decay in noisy predictors.
+- **Real-World Validation**: Use CCLE datasets for IC50 predictions and evaluate against WINTHER, SIMS, and DDPP algorithms.
+
+---
+
+## **Technical Details**
+
+### **Languages and Libraries**
+- **Core Language**: Python (version 3.8+)
+- **Libraries**: NumPy, Pandas, Scikit-learn, Matplotlib, Seaborn, Plotly, Dash, PySimpleGUI
+
+### **Dependencies**
+- **Datasets**: Cancer Cell-Line Encyclopedia (CCLE) transcriptomics and IC50 data
+- **Predictor Scores**: Algorithm outputs from WINTHER, SIMS, and DDPP
+
+---
+
+## **Installation**
+
+### **1. Clone the Repository**
+```bash
+git clone https://github.com/OhadLandau/OptiRanker.git
 cd OptiRanker
+
 2. Set Up a Virtual Environment
 bash
 Copy code
@@ -38,6 +51,8 @@ pip install -r requirements.txt
 4. Download CCLE Dataset
 Download transcriptomics and IC50 datasets from the official CCLE website.
 Save the datasets in a folder named data/ within the repository.
+
+
 Repository Structure
 graphql
 Copy code
@@ -98,9 +113,3 @@ bash
 Copy code
 # Install development dependencies
 pip install -r requirements-dev.txt
-Linting
-bash
-Copy code
-# Run linting to ensure code quality
-flake8 scripts/
-Let me know if you need anything else added or modified!
