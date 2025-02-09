@@ -13,11 +13,13 @@ from dash.dependencies import Input, Output
 import plotly.graph_objs as go
 import csv
 
+
 def main():
     """
     Main function to run simulations and handle data input.
     """
-    num_iterations = int(input("Do you want to run multiple simulations? Enter the number of iterations (1 for single simulation): "))
+    num_iterations = int(
+        input("Do you want to run multiple simulations? Enter the number of iterations (1 for single simulation): "))
 
     print("Please enter three dimensions:")
     num_individual = int(input("Enter rows (individuals): "))
@@ -30,25 +32,25 @@ def main():
     if num_iterations > 1:
         run_multiple_simulations(num_individual, num_drugs, num_predictors, corr, distance, None, num_iterations)
     else:
-        results, drugs_used_dict, individuals_used_dict = run_project(num_individual, num_drugs, num_predictors, corr, distance, None, True, True)
+        results, drugs_used_dict, individuals_used_dict = run_project(num_individual, num_drugs, num_predictors, corr,
+                                                                      distance, None, True, True)
         if len(results) != 12:
             print(f"Unexpected number of elements in results: {len(results)}")
         plot_combined_scores([results[5]], results[5])  # Pass a list with a single element for consistency
+        # Note: Order of parameters corrected so that the "high std" dictionaries are passed in proper order.
         plot_combined_graphs(results[1], results[3], results[2], results[4],
-                             results[9], results[10], results[11], results[8],
+                             results[8], results[9], results[10], results[11],
                              results[6], results[7])
         plot_static_heatmap(results[0], title="Single Simulation Heatmap of Subsets", min_corr=corr)
-        # Remove the call to plot_interactive_heatmap here
-        # The Dash app will be run in the __main__ block
-
-        # Store necessary variables for the Dash app
+        # Store necessary variables for the Dash app and cost-effectiveness analysis
         global data_dict_global, scores_byD_high_std_global, scores_byI_high_std_global, min_corr_global, drugs_used_dict_global, individuals_used_dict_global
         data_dict_global = results[0]
-        scores_byD_high_std_global = results[9]
+        scores_byD_high_std_global = results[8]
         scores_byI_high_std_global = results[10]
         min_corr_global = corr
         drugs_used_dict_global = drugs_used_dict
         individuals_used_dict_global = individuals_used_dict
+
 
 def convert_file_to_csv(file_path):
     file_extension = os.path.splitext(file_path)[1]
@@ -57,10 +59,12 @@ def convert_file_to_csv(file_path):
         lines = file.readlines()
     return [line.strip().split(delimiter) for line in lines]
 
+
 def read_csv(file_path):
     df = pd.read_csv(file_path, index_col=0)
     df = df.apply(pd.to_numeric, errors='coerce')
     return df.values.tolist()
+
 
 def clean_data(data, num_predictors):
     cleaned_data = {}
@@ -73,8 +77,10 @@ def clean_data(data, num_predictors):
         cleaned_data[predictor_key] = cleaned_rows
     return cleaned_data
 
+
 def get_ranking(row):
     return (len(row) - np.argsort(np.argsort(row))).tolist()
+
 
 def rank_data(data, num_predictors, num_drugs):
     ranked_data = {}
@@ -89,6 +95,7 @@ def rank_data(data, num_predictors, num_drugs):
         ranked_data[predictor_key] = ranked_predictor_data
     return ranked_data
 
+
 def export_ranked_data(ranked_data, num_predictors):
     for i in range(num_predictors):
         predictor_key = f"Predictor{i}"
@@ -99,15 +106,18 @@ def export_ranked_data(ranked_data, num_predictors):
             for row in ranked_rows:
                 writer.writerow(row)
 
+
 def pearson_correlation(x, y):
     if len(x) != len(y):
         raise ValueError("The lists must have the same length.")
     correlation = np.corrcoef(x, y)[0, 1]
     return correlation
 
+
 def rank_integers(lst):
     rank_dict = {val: i + 1 for i, val in enumerate(sorted(lst))}
     return [rank_dict[val] for val in lst]
+
 
 def drug_standardDeviation(d, data, num_individuals, num_predictors):
     list_drug_rank_per_pred = []
@@ -118,6 +128,7 @@ def drug_standardDeviation(d, data, num_individuals, num_predictors):
         std += np.std(list_drug_rank_per_pred)
         list_drug_rank_per_pred = []
     return std
+
 
 def RandomDataGenerator(num_individuals, num_drugs, num_predictors, gold_standard=None):
     temp_sim_data = {}
@@ -155,15 +166,18 @@ def RandomDataGenerator(num_individuals, num_drugs, num_predictors, gold_standar
 
     return temp_sim_data, results_GS
 
+
 def listTheStds(data, num_individuals, num_predictors, num_drugs):
     list_of_stds = []
     for i in range(num_drugs):
         list_of_stds.append(drug_standardDeviation(i, data, num_individuals, num_predictors))
     return list_of_stds
 
+
 def drug_selector(d, list_of_stds):
     sorted_indices = sorted(range(len(list_of_stds)), key=lambda i: list_of_stds[i], reverse=True)[:d]
     return sorted_indices
+
 
 def individual_standardDeviation(data, num_individuals, num_predictors, num_drugs):
     stds = []
@@ -175,11 +189,14 @@ def individual_standardDeviation(data, num_individuals, num_predictors, num_drug
         stds.append(individual_std)
     return stds
 
+
 def individual_selector(i, list_of_stds):
     sorted_indices = sorted(range(len(list_of_stds)), key=lambda idx: list_of_stds[idx], reverse=True)[:i]
     return sorted_indices
 
-def run_project(num_individual, num_drugs, num_predictors, corr, distance, data, select_high_std_drugs=False, select_high_std_individuals=False):
+
+def run_project(num_individual, num_drugs, num_predictors, corr, distance, data, select_high_std_drugs=False,
+                select_high_std_individuals=False):
     temp_sim_data = {}
     results_GS = {}
     individual_stds = []
@@ -215,7 +232,8 @@ def run_project(num_individual, num_drugs, num_predictors, corr, distance, data,
 
         sd_drugs = [0] * n_drugs
         for drug in range(n_drugs):
-            ranks = [data[predictor][ind][drug] for predictor in list(data.keys())[:-1] for ind in individuals_to_filter]
+            ranks = [data[predictor][ind][drug] for predictor in list(data.keys())[:-1] for ind in
+                     individuals_to_filter]
             ranks = [rank for rank in ranks if isinstance(rank, (int, float))]
             sd_drugs[drug] = np.std(ranks)
 
@@ -337,7 +355,7 @@ def run_project(num_individual, num_drugs, num_predictors, corr, distance, data,
         cIn, cDr = 1, 1
         best_subsetDict = {}
         list_for_tempSubset = []
-        while cIn <= num_individual:
+        while cIn <= num_indiv:
             cDr = 1
             while cDr <= num_drugs:
                 list_for_tempSubset, list_of_bestRanks = bestSubsetI(cIn, cDr, data, num_predictors, num_individual,
@@ -366,11 +384,13 @@ def run_project(num_individual, num_drugs, num_predictors, corr, distance, data,
             cIn += 1
 
     results = (best_subsetDict, scores_byD_arbitrary, scores_byI_arbitrary, corrByD_arbitrary, corrByI_arbitrary,
-               best_predictor, list_of_stds, individual_stds, scores_byD_high_std, corrByD_high_std, scores_byI_high_std,
+               best_predictor, list_of_stds, individual_stds, scores_byD_high_std, corrByD_high_std,
+               scores_byI_high_std,
                corrByI_high_std)
 
     print(f"Results tuple has {len(results)} elements: {results}")  # Debug print
     return results, drugs_used_dict, individuals_used_dict
+
 
 def run_multiple_simulations(num_individual, num_drugs, num_predictors, corr, distance, data, num_iterations):
     all_best_predictor_scores = []
@@ -385,7 +405,8 @@ def run_multiple_simulations(num_individual, num_drugs, num_predictors, corr, di
     all_best_subsetDict = []
 
     for _ in range(num_iterations):
-        results, drugs_used_dict, individuals_used_dict = run_project(num_individual, num_drugs, num_predictors, corr, distance, data, True, True)
+        results, drugs_used_dict, individuals_used_dict = run_project(num_individual, num_drugs, num_predictors, corr,
+                                                                      distance, data, True, True)
         best_subsetDict, scores_byD_arbitrary, scores_byI_arbitrary, corrByD_arbitrary, corrByI_arbitrary, best_predictor, list_of_stds, individual_stds, scores_byD_high_std, corrByD_high_std, scores_byI_high_std, corrByI_high_std = results
         all_best_predictor_scores.append(best_predictor)
         all_scores_byD_arbitrary.append(scores_byD_arbitrary)
@@ -418,16 +439,14 @@ def run_multiple_simulations(num_individual, num_drugs, num_predictors, corr, di
     averaged_best_subsetDict = average_dicts(all_best_subsetDict)
 
     plot_combined_scores(all_best_predictor_scores, averaged_best_predictor_scores)
-    plot_combined_graphs(averaged_scores_byD_arbitrary, averaged_corrByD_arbitrary, averaged_scores_byI_arbitrary, averaged_corrByI_arbitrary,
-                         averaged_scores_byD_high_std, averaged_corrByD_high_std, averaged_scores_byI_high_std, averaged_corrByI_high_std, list_of_stds,
+    plot_combined_graphs(averaged_scores_byD_arbitrary, averaged_corrByD_arbitrary, averaged_scores_byI_arbitrary,
+                         averaged_corrByI_arbitrary,
+                         averaged_scores_byD_high_std, averaged_corrByD_high_std, averaged_scores_byI_high_std,
+                         averaged_corrByI_high_std, list_of_stds,
                          individual_stds)
 
     plot_static_heatmap(averaged_best_subsetDict, title="Averaged Heatmap of Subsets", min_corr=corr)
-    # Remove the call to plot_interactive_heatmap here
-
-    # The Dash app will be run in the __main__ block
-
-    # Store necessary variables for the Dash app
+    # Store necessary variables for the Dash app and cost-effectiveness analysis
     global data_dict_global, scores_byD_high_std_global, scores_byI_high_std_global, min_corr_global, drugs_used_dict_global, individuals_used_dict_global
     data_dict_global = averaged_best_subsetDict
     scores_byD_high_std_global = averaged_scores_byD_high_std
@@ -435,6 +454,7 @@ def run_multiple_simulations(num_individual, num_drugs, num_predictors, corr, di
     min_corr_global = corr
     drugs_used_dict_global = drugs_used_dict
     individuals_used_dict_global = individuals_used_dict
+
 
 def plot_combined_scores(all_best_predictor_scores, averaged_best_predictor_scores):
     fig, axs = plt.subplots(2, 1, figsize=(18, 14))
@@ -480,6 +500,7 @@ def plot_combined_scores(all_best_predictor_scores, averaged_best_predictor_scor
     plt.tight_layout()
     plt.show()
 
+
 def plot_combined_graphs(scores_byD_arbitrary, corrByD_arbitrary, scores_byI_arbitrary, corrByI_arbitrary,
                          scores_byD_high_std, corrByD_high_std, scores_byI_high_std, corrByI_high_std, std_drugs,
                          std_individuals):
@@ -488,14 +509,14 @@ def plot_combined_graphs(scores_byD_arbitrary, corrByD_arbitrary, scores_byI_arb
     def plot_combined(ax, scores_by, corrBy, x_axis, title):
         data = []
         if isinstance(scores_by, dict):
-            for num, scores in sorted(scores_by.items(), key=lambda x: int(x[0])):  # Sort by numeric order
+            for num, scores in sorted(scores_by.items(), key=lambda x: int(x[0])):
                 total_score = sum(scores)
                 if total_score == 0:
                     normalized_scores = [0] * len(scores)
                 else:
                     normalized_scores = [score / total_score for score in scores]
                 for i, score in enumerate(normalized_scores):
-                    data.append([int(num), f"P{i + 1}", score])  # Ensure num is an integer
+                    data.append([int(num), f"P{i + 1}", score])
         else:
             for i, scores in enumerate(scores_by):
                 total_score = sum(scores)
@@ -514,10 +535,10 @@ def plot_combined_graphs(scores_byD_arbitrary, corrByD_arbitrary, scores_byI_arb
 
         bottom = np.zeros(len(scores_pivot))
         for col in scores_pivot.columns:
-            ax.bar(scores_pivot.index, scores_pivot[col], bottom=bottom, label=f'P{col}', color=sns.color_palette("Set2", len(scores_pivot.columns))[col - 1])
+            ax.bar(scores_pivot.index, scores_pivot[col], bottom=bottom, label=f'P{col}',
+                   color=sns.color_palette("Set2", len(scores_pivot.columns))[col - 1])
             bottom += scores_pivot[col]
 
-        # Limit number of ticks and labels
         max_ticks = 20
         tick_step = max(1, len(scores_pivot.index) // max_ticks)
         ax.set_xticks(scores_pivot.index[::tick_step])
@@ -528,17 +549,19 @@ def plot_combined_graphs(scores_byD_arbitrary, corrByD_arbitrary, scores_byI_arb
         ax.set_title(title, fontsize=20, fontweight='bold')
         ax.tick_params(axis='both', which='major', labelsize=14)
 
-    plot_combined(axs[0, 0], scores_byD_arbitrary, corrByD_arbitrary, "Drugs", "Scores and Correlation (Arbitrary Drugs)")
+    plot_combined(axs[0, 0], scores_byD_arbitrary, corrByD_arbitrary, "Drugs",
+                  "Scores and Correlation (Arbitrary Drugs)")
     plot_combined(axs[1, 0], scores_byD_high_std, corrByD_high_std, "Drugs", "Scores and Correlation (High Std Drugs)")
 
-    plot_combined(axs[0, 1], scores_byI_arbitrary, corrByI_arbitrary, "Individuals", "Scores and Correlation (Arbitrary Individuals)")
-    plot_combined(axs[1, 1], scores_byI_high_std, corrByI_high_std, "Individuals", "Scores and Correlation (High Std Individuals)")
+    plot_combined(axs[0, 1], scores_byI_arbitrary, corrByI_arbitrary, "Individuals",
+                  "Scores and Correlation (Arbitrary Individuals)")
+    plot_combined(axs[1, 1], scores_byI_high_std, corrByI_high_std, "Individuals",
+                  "Scores and Correlation (High Std Individuals)")
 
     def plot_trendline(ax, x, y_arbitrary, y_high_std, title, xlabel):
         y_arbitrary = np.array(y_arbitrary)
         y_high_std = np.array(y_high_std)
 
-        # Replace NaN values with the minimum of existing values for visual continuity, if applicable
         min_arbitrary = np.nanmin(y_arbitrary) if np.isnan(y_arbitrary).any() else min(y_arbitrary)
         min_high_std = np.nanmin(y_high_std) if np.isnan(y_high_std).any() else min(y_high_std)
 
@@ -548,12 +571,10 @@ def plot_combined_graphs(scores_byD_arbitrary, corrByD_arbitrary, scores_byI_arb
         ax.plot(x, y_arbitrary, marker='o', color='b', linewidth=2, label='Arbitrary')
         ax.plot(x, y_high_std, marker='o', color='g', linewidth=2, label='High Std')
 
-        # Calculate the min and max across both trendlines
         y_min = min(np.min(y_arbitrary), np.min(y_high_std))
         y_max = max(np.max(y_arbitrary), np.max(y_high_std))
 
-        ax.set_ylim(y_min - 0.1, y_max + 0.1)  # Adding some padding
-
+        ax.set_ylim(y_min - 0.1, y_max + 0.1)
         ax.set_xlabel(xlabel, fontsize=16, fontweight='bold')
         ax.set_ylabel("Correlation", fontsize=16, fontweight='bold')
         ax.set_title(title, fontsize=20, fontweight='bold')
@@ -569,8 +590,10 @@ def plot_combined_graphs(scores_byD_arbitrary, corrByD_arbitrary, scores_byI_arb
     y_individuals_arbitrary = corrByI_arbitrary
     y_individuals_high_std = corrByI_high_std
 
-    plot_trendline(axs[2, 0], x_drugs, y_drugs_arbitrary, y_drugs_high_std, "Arbitrary vs High Std Selection of Drugs", "Number of Drugs")
-    plot_trendline(axs[2, 1], x_individuals, y_individuals_arbitrary, y_individuals_high_std, "Arbitrary vs High Std Selection of Individuals", "Number of Individuals")
+    plot_trendline(axs[2, 0], x_drugs, y_drugs_arbitrary, y_drugs_high_std, "Arbitrary vs High Std Selection of Drugs",
+                   "Number of Drugs")
+    plot_trendline(axs[2, 1], x_individuals, y_individuals_arbitrary, y_individuals_high_std,
+                   "Arbitrary vs High Std Selection of Individuals", "Number of Individuals")
 
     handles, labels = axs[0, 0].get_legend_handles_labels()
     fig.legend(handles, labels, loc='lower center', ncol=min(14, len(handles)), fontsize=14)
@@ -594,6 +617,7 @@ def plot_combined_graphs(scores_byD_arbitrary, corrByD_arbitrary, scores_byI_arb
     plt.tight_layout()
     plt.show()
 
+
 def plot_static_heatmap(data_dict, title, min_corr):
     subset_labels = list(data_dict.keys())
     subset_values = list(data_dict.values())
@@ -602,22 +626,19 @@ def plot_static_heatmap(data_dict, title, min_corr):
     y_labels = sorted(list(set(int(label.split('d')[1]) for label in subset_labels)))
 
     heatmap_data = np.zeros((len(y_labels), len(x_labels)))
-
     for label, value in zip(subset_labels, subset_values):
         i = int(label.split('i')[1].split('d')[0])
         d = int(label.split('d')[1])
         heatmap_data[d - 1, i - 1] = value
 
-    # Adjust figure size dynamically
     fig_width = min(20, len(x_labels) / 2)
     fig_height = min(20, len(y_labels) / 2)
     plt.figure(figsize=(fig_width, fig_height))
 
     ax = sns.heatmap(heatmap_data, cmap='Blues', cbar=False, square=True, xticklabels=x_labels, yticklabels=y_labels)
 
-    # Limit number of ticks and labels
-    max_xticks = 20  # Maximum number of x-axis ticks
-    max_yticks = 20  # Maximum number of y-axis ticks
+    max_xticks = 20
+    max_yticks = 20
 
     x_tick_step = max(1, len(x_labels) // max_xticks)
     y_tick_step = max(1, len(y_labels) // max_yticks)
@@ -627,76 +648,132 @@ def plot_static_heatmap(data_dict, title, min_corr):
     ax.set_yticks(range(0, len(y_labels), y_tick_step))
     ax.set_yticklabels([y_labels[i] for i in range(0, len(y_labels), y_tick_step)], fontsize=8)
 
-    # Add rectangle patches for values above the correlation threshold
     for i in range(len(y_labels)):
         for j in range(len(x_labels)):
             value = heatmap_data[i, j]
             if value >= min_corr:
                 ax.add_patch(plt.Rectangle((j, i), 1, 1, fill=False, edgecolor='white', linewidth=2))
-                ax.text(j + 0.5, i + 0.5, f"{value:.2f}", ha='center', va='center', color='white', fontsize=7, fontweight='bold')
+                ax.text(j + 0.5, i + 0.5, f"{value:.2f}", ha='center', va='center', color='white', fontsize=7,
+                        fontweight='bold')
 
-    # Set axis labels
     plt.xlabel('Individuals', fontsize=18, fontweight='bold')
     plt.ylabel('Drugs', fontsize=18, fontweight='bold')
-
-    # Invert the y-axis to match previous heatmap orientation
-    plt.gca().invert_yaxis()
-
-    # Ensure the layout is tight and compact
+    plt.gca().invert_yaxis()  # Keeping the static heatmap as before for correlation
     plt.tight_layout()
-
-    # Show the plot
     plt.show()
 
-# No need to define plot_interactive_heatmap as a function anymore
-# We will move the Dash app code into the __main__ block
 
+def plot_cost_effectiveness_heatmap(data_dict, min_corr):
+    """
+    Compute and plot the cost-effective heatmap (static Matplotlib plot) based on data_dict (best_subsetDict)
+    and the user-specified minimum correlation.
+    For each subset with key "iXdY":
+      - If the correlation >= min_corr, compute:
+            cost_effective (%) = (correlation / (X + Y)) * 100
+      - Otherwise, set the value to 0.
+    Cells with 0 will appear as the lowest value (yellow).
+    The top 5 cells (by cost-effective %) are outlined with a thick black border.
+    Additionally, for cells where the original correlation is >= 0.7, the cost-effective % is annotated in the cell.
+    The y-axis is not inverted (i.e. it increases from 0 to max).
+    """
+    subset_labels = list(data_dict.keys())
+    # Build lists of X (individuals) and Y (drugs) values
+    x_values = sorted(list(set(int(label.split('i')[1].split('d')[0]) for label in subset_labels)))
+    y_values = sorted(list(set(int(label.split('d')[1]) for label in subset_labels)))
+    cost_matrix = np.zeros((len(y_values), len(x_values)))
+    corr_matrix = np.zeros((len(y_values), len(x_values)))
+
+    for label, corr_val in data_dict.items():
+        i_val = int(label.split('i')[1].split('d')[0])
+        d_val = int(label.split('d')[1])
+        x_idx = x_values.index(i_val)
+        y_idx = y_values.index(d_val)
+        if corr_val >= min_corr:
+            cost = (corr_val / (i_val + d_val)) * 100
+            cost_matrix[y_idx, x_idx] = cost
+        else:
+            cost_matrix[y_idx, x_idx] = 0  # Instead of masking, we set it to 0 (yellow)
+        corr_matrix[y_idx, x_idx] = corr_val
+
+    # Set vmax a little above the max cost effective %
+    vmax = cost_matrix.max() * 1.05 if cost_matrix.max() > 0 else 1
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    cax = ax.imshow(cost_matrix, cmap="YlOrRd", vmin=0, vmax=vmax, aspect='auto')
+
+    # Set tick positions and labels
+    ax.set_xticks(np.arange(len(x_values)))
+    ax.set_yticks(np.arange(len(y_values)))
+    ax.set_xticklabels(x_values, fontsize=10)
+    ax.set_yticklabels(y_values, fontsize=10)
+    ax.set_xlabel("Number of Individuals", fontsize=12, fontweight='bold')
+    ax.set_ylabel("Number of Drugs", fontsize=12, fontweight='bold')
+    ax.set_title("Cost-Effective Heatmap", fontsize=14, fontweight='bold')
+
+    # Add colorbar
+    cbar = fig.colorbar(cax, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_label("Cost-Effective", fontsize=12, fontweight='bold')
+    cbar.ax.tick_params(labelsize=10)
+
+    # Identify top 5 cost-effective cells
+    flat_indices = [(i, j) for i in range(cost_matrix.shape[0]) for j in range(cost_matrix.shape[1])]
+    sorted_indices = sorted(flat_indices, key=lambda idx: cost_matrix[idx[0], idx[1]], reverse=True)
+    top5 = sorted_indices[:5]
+    for (row, col) in top5:
+        rect = plt.Rectangle((col - 0.5, row - 0.5), 1, 1, fill=False, edgecolor="black", linewidth=3)
+        ax.add_patch(rect)
+
+    # Annotate cells with cost-effective % if the original correlation is >= 0.7
+    for i in range(len(y_values)):
+        for j in range(len(x_values)):
+            if corr_matrix[i, j] >= 0.7:
+                ax.text(j, i, f"{cost_matrix[i, j]:.1f}", ha='center', va='center', color="black", fontsize=8,
+                        fontweight='bold')
+
+    ax.invert_yaxis()
+    plt.tight_layout()
+    plt.show()
+
+# -------------------------------
+# Dash App for Interactive Correlation Heatmap (Blue)
+# -------------------------------
 if __name__ == "__main__":
     main()
 
-    # Now, define and run the Dash app
+    # Plot the Cost-Effective Heatmap (static Matplotlib plot)
+    plot_cost_effectiveness_heatmap(data_dict_global, min_corr_global)
+
+    # Now, define and run the Dash app (interactive blue correlation heatmap only)
     app = dash.Dash(__name__)
 
-    # Prepare data for the interactive heatmap
-    data_dict = data_dict_global
-    scores_byD_high_std = scores_byD_high_std_global
-    scores_byI_high_std = scores_byI_high_std_global
-    min_corr = min_corr_global
-    drugs_used_dict = drugs_used_dict_global
-    individuals_used_dict = individuals_used_dict_global
-
-    # Prepare data for heatmap
-    subset_labels = list(data_dict.keys())
-    subset_values = list(data_dict.values())
-
+    subset_labels = list(data_dict_global.keys())
+    subset_values = list(data_dict_global.values())
     x_labels = sorted(list(set(int(label.split('i')[1].split('d')[0]) for label in subset_labels)))
     y_labels = sorted(list(set(int(label.split('d')[1]) for label in subset_labels)))
-
     heatmap_data = np.zeros((len(y_labels), len(x_labels)))
-
     for label, value in zip(subset_labels, subset_values):
         i = int(label.split('i')[1].split('d')[0])
         d = int(label.split('d')[1])
         heatmap_data[d - 1, i - 1] = value
 
+    # Create annotations for the correlation heatmap.
+    # Use white text for cells with value >= min_corr_global, black otherwise.
     annotations = []
     for d in range(len(y_labels)):
         for i in range(len(x_labels)):
-            value = heatmap_data[d, i]
-            if value >= min_corr:
-                annotations.append(dict(
-                    text=f"<b>{value:.2f}</b>",
-                    x=i,
-                    y=d,
-                    xref='x1',
-                    yref='y1',
-                    showarrow=False,
-                    font=dict(
-                        color="white" if value < 0.5 else "black",
-                        size=12,
-                        family='Arial'
-                    )
-                ))
+            text_color = "white" if heatmap_data[d, i] >= min_corr_global else "black"
+            annotations.append(dict(
+                text=f"<b>{heatmap_data[d, i]:.2f}</b>",
+                x=i,
+                y=d,
+                xref='x1',
+                yref='y1',
+                showarrow=False,
+                font=dict(
+                    color=text_color,
+                    size=10
+                )
+            ))
 
     app.layout = html.Div([
         dcc.Graph(
@@ -708,21 +785,27 @@ if __name__ == "__main__":
                     y=[str(d) for d in y_labels],
                     colorscale='Blues',
                     showscale=True,
-                    text=[[f"{d}d, {i}i" for i in x_labels] for d in y_labels],
-                    hoverinfo="text",
                     zmin=0,
-                    zmax=1
+                    zmax=1,
+                    colorbar=dict(
+                        title="Correlation",
+                        tickvals=[0, 0.5, 1],
+                        ticktext=['0', '0.5', '1'],
+                        titlefont=dict(size=12),
+                        tickfont=dict(size=12)
+                    )
                 ),
                 layout=go.Layout(
+                    title="Correlation Heatmap",
                     annotations=annotations,
                     xaxis=dict(
                         title='Number of Individuals',
                         tickmode='array',
                         tickvals=list(range(len(x_labels))),
                         ticktext=[str(i) for i in x_labels],
-                        tickangle=-45,  # Tilt the x-axis labels
+                        tickangle=-45,
                         automargin=True,
-                        tickfont=dict(size=15)
+                        tickfont=dict(size=12)
                     ),
                     yaxis=dict(
                         title='Number of Drugs',
@@ -730,9 +813,9 @@ if __name__ == "__main__":
                         tickvals=list(range(len(y_labels))),
                         ticktext=[str(d) for d in y_labels],
                         automargin=True,
-                        tickfont=dict(size=15)
+                        tickfont=dict(size=12)
                     ),
-                    margin=dict(l=100, r=50, t=50, b=100),  # Increase margins for better fit
+                    margin=dict(l=100, r=50, t=50, b=100)
                 )
             )
         ),
@@ -746,19 +829,15 @@ if __name__ == "__main__":
     )
     def display_click_data(clickData):
         if clickData is None:
-            return "Click on a heatmap cell to see the details."
+            return "Click on a cell in the Correlation Heatmap to see details."
 
         point = clickData['points'][0]
         i = int(point['x'])
         d = int(point['y'])
-
-        # Fetch the first `d` drugs based on highest standard deviations
-        drugs = drugs_used_dict.get(d + 1, [])
-
-        # Fetch the first `i` individuals (arbitrarily from 0 to `i`)
-        individuals = list(range(i + 1))
-
-        subset_info = f"Drugs: {', '.join(str(x) for x in drugs)}\nIndividuals: {', '.join(str(x) for x in individuals)}\nCorrelation: {heatmap_data[d, i]:.2f}"
+        drugs = drugs_used_dict_global.get(d, [])
+        individuals = individuals_used_dict_global.get(i, list(range(1, i + 1)))
+        correlation_value = heatmap_data[d - 1, i - 1]
+        subset_info = f"Drugs: {', '.join(str(x) for x in drugs)}\nIndividuals: {', '.join(str(x) for x in individuals)}\nCorrelation: {correlation_value:.2f}"
         return subset_info
 
 
