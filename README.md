@@ -2,7 +2,7 @@
 # **OptiRanker: A Framework for Optimizing Pre-Clinical Drug Prioritization**
 
 ## **Overview**
-OptiRanker is a Python-based tool designed to simulate, rank, and optimize pre-clinical drug prioritization algorithms. This framework systematically evaluates the performance of prioritization algorithms under various experimental conditions. By identifying the smallest subsets of drugs and individuals required to differentiate between algorithms, OptiRanker minimizes experimental costs while maximizing statistical power.
+OptiRanker is a Python-based tool designed to simulate and optimize clinical trials for drug prioritization algorithms. By identifying the smallest subsets of drugs and individuals required to differentiate between algorithms, OptiRanker minimizes experimental costs while maximizing statistical power.
 
 ### **Key Features**
 - Simulate the ranking process of drugs and predictors with varying levels of noise.
@@ -13,9 +13,9 @@ OptiRanker is a Python-based tool designed to simulate, rank, and optimize pre-c
 ---
 
 ## **Applications**
-- **Simulated Trial Optimization**: Reduce experimental costs for in vivo validation of drug prioritization algorithms.
+- **Simulated Trial Optimization**: Reduce experimental costs for clinical trials of drug prioritization algorithms.
 - **Empirical Evaluation**: Analyze accuracy decay in noisy predictors.
-- **Real-World Validation**: Use your own data to compare with algorithm predictions. Leverage CCLE datasets for IC50 predictions and evaluate rankings independently or against WINTHER, SIMS, and DDPP using files in the In-Silico Sample Trial folder
+- **Real-World Validation**: Use your own data to compare with algorithm predictions. Leverage CCLE datasets for IC50 predictions and evaluate tested rankings against WINTHER, SIMS, and DDPP using files in the In-Silico Sample Trial folder
 
 ---
 
@@ -46,7 +46,7 @@ pip install -r requirements.txt
 ```
 
 ### **4. Download CCLE Dataset**
-- Download transcriptomics and IC50 datasets from the official [CCLE website](https://depmap.org/portal/).
+- If user wants to generate predictions from their algorithms and input them \for optimization, transcriptomics and IC50 datasets can be found from the official [CCLE website](https://depmap.org/portal/) and [GDSC website](https://www.cancerrxgene.org/).
 
 ---
 
@@ -85,12 +85,13 @@ python scripts/FullSimulation.py
 ```
 
 ### **2. Real-World Dataset Pipeline**
-This script processes user-provided CCLE datasets, evaluates algorithm performance, and visualizes the results.
+This script processes user-provided predictions, evaluates algorithm performance against results, and visualizes rankings and optimization. If user has prediction with no results input varries, see below. 
 
 #### **User Inputs:**
 - Select predictor and results files via a graphical interface.
 - Choose whether data is already ranked or needs preprocessing.
 - Enter minimum correlation threshold and number of subsets to find.
+- If no result file is available, user is prompted to select the amount of Individuals and Drugs for his trial, he will then recieve the most informative of each (highest standard deviation)
 
 Run the script:
 ```bash
