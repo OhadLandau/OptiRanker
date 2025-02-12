@@ -126,8 +126,8 @@ Below are sample outputs from OptiRanker. Click any image for full resolution:
     <a href="results/Fig1A overflow.png" target="_blank"><img src="results/Fig1A overflow.png" alt="Overflow of OptiRanker" width="200"/></a>
     <a href="results/Fig2 - 100simX20iX20px20D.png" target="_blank"><img src="results/Fig2 - 100simX20iX20px20D.png" alt="100 Simulations with 20x20x20 inputs" width="200"/></a>
     <a href="results/Figure3 - InformedSelection.png" target="_blank"><img src="results/Figure3 - InformedSelection.png" alt="Informed Selection Process" width="200"/></a>
-    <a href="results/Figure 4 - HeatMaps .png" target="_blank"><img src="results/fIG4hEATMAP.png" alt="Optimization Subsets Heatmap" width="200"/></a>
-    <a href="results/Figure 5 - In-silico.png" target="_blank"><img src="results/fIG4hEATMAP.png" alt="Optimization Subsets Heatmap" width="200"/></a>
+    <a href="results/Figure 4 - HeatMaps .png" target="_blank"><img src="results/Figure 4 - HeatMaps .png" alt="Optimization Subsets Heatmap" width="200"/></a>
+    <a href="results/Figure 5 - In-silico.png" target="_blank"><img src="results/Figure 5 - In-silico.png" alt="Optimization Subsets Heatmap" width="200"/></a>
 </div>
 
 ---
