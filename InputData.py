@@ -29,13 +29,19 @@ def preprocess_data(predictor_files, results_file=None, is_ranked=False, no_resu
     """
     Reads predictor CSVs and optionally a results CSV.
     Intersects on (drugs, individuals).
-    Ranks them if is_ranked=False. Returns all relevant dataframes.
+    Ranks them if is_ranked=False.
+    Returns:
+        data_dict: Dict of predictor matrix data
+        common_drugs: Final list of drugs common across all inputs
+        common_individuals: Final list of individuals common across all inputs
+        df_results_ranked: Ranked results (or None if no results)
+        ranked_predictor_dfs: List of ranked predictor DataFrames
+        predictor_names: Names of the predictor CSV files (no extension)
     """
     data_dict = {}
     predictor_dfs = []
     predictor_names = []
 
-    # Read each predictor file
     for file_path in predictor_files:
         df = pd.read_csv(file_path, index_col=0)
         df.columns = df.columns.str.replace('.', '-', regex=False)
@@ -44,7 +50,6 @@ def preprocess_data(predictor_files, results_file=None, is_ranked=False, no_resu
         predictor_dfs.append(df)
         predictor_names.append(os.path.splitext(os.path.basename(file_path))[0])
 
-    # Intersection of drugs and individuals among predictors
     common_drugs = set(predictor_dfs[0].index)
     common_individuals = set(predictor_dfs[0].columns)
     for df in predictor_dfs[1:]:
@@ -69,7 +74,6 @@ def preprocess_data(predictor_files, results_file=None, is_ranked=False, no_resu
         common_individuals = sorted(list(common_individuals))
         df_results = None
 
-    # Align each predictor
     aligned_predictor_dfs = [df.loc[common_drugs, common_individuals] for df in predictor_dfs]
 
     if not is_ranked:
@@ -99,12 +103,38 @@ def preprocess_data(predictor_files, results_file=None, is_ranked=False, no_resu
     return data_dict, common_drugs, common_individuals, df_results_ranked, ranked_predictor_dfs, predictor_names
 
 ###############################################################################
-# Simulation Helpers
+# STD Computation Helpers
+###############################################################################
+def compute_drug_stds(predictor_dfs):
+    rankings = [df.values for df in predictor_dfs]
+    rankings = np.stack(rankings, axis=-1)
+    drug_stds = np.std(rankings, axis=(1, 2))
+    return pd.Series(drug_stds, index=predictor_dfs[0].index)
+
+def compute_individual_stds(predictor_dfs):
+    rankings = [df.values for df in predictor_dfs]
+    rankings = np.stack(rankings, axis=-1)
+    individual_stds = np.std(rankings, axis=(0, 2))
+    return pd.Series(individual_stds, index=predictor_dfs[0].columns)
+
+###############################################################################
+# Correlation Helpers
+###############################################################################
+def pearson_correlation(x, y):
+    return np.corrcoef(x, y)[0, 1]
+
+def calculate_scores_full(df_results_ranked, predictor_dfs):
+    scores = []
+    for df in predictor_dfs:
+        diff = df_results_ranked - df
+        score = np.nansum(diff ** 2)
+        scores.append(score)
+    return np.array(scores)
+
+###############################################################################
+# Correlation-Based Simulation (Not used for the new "no results" approach)
 ###############################################################################
 def RandomDataGenerator(num_individuals, num_drugs, num_predictors):
-    """
-    Generates random ranking data for simulation (GoldStandard + noisy Predictors).
-    """
     temp_sim_data = {}
     counter = 0
 
@@ -117,7 +147,7 @@ def RandomDataGenerator(num_individuals, num_drugs, num_predictors):
 
     for counter in range(1, num_predictors):
         degraded_predictor = gold_standard.copy()
-        num_swaps = int(0.1 * num_drugs * num_individuals)  # 10% noise
+        num_swaps = int(0.1 * num_drugs * num_individuals)
         for _ in range(num_swaps):
             ind = random.randint(0, num_individuals - 1)
             drug1, drug2 = random.sample(range(num_drugs), 2)
@@ -126,51 +156,9 @@ def RandomDataGenerator(num_individuals, num_drugs, num_predictors):
                 degraded_predictor[drug1, ind],
             )
         temp_sim_data[f"Predictor{counter}"] = degraded_predictor
-
     temp_sim_data["GoldStandard"] = gold_standard
     return temp_sim_data, gold_standard
 
-###############################################################################
-# Stats Helpers
-###############################################################################
-def compute_drug_stds(predictor_dfs):
-    """
-    Computes the STD of drug ranks across all individuals and predictors.
-    """
-    rankings = [df.values for df in predictor_dfs]
-    rankings = np.stack(rankings, axis=-1)  # (num_drugs, num_individuals, num_predictors)
-    drug_stds = np.std(rankings, axis=(1, 2))
-    return pd.Series(drug_stds, index=predictor_dfs[0].index)
-
-def compute_individual_stds(predictor_dfs):
-    """
-    Computes the STD of individual ranks across all drugs and predictors.
-    """
-    rankings = [df.values for df in predictor_dfs]
-    rankings = np.stack(rankings, axis=-1)
-    individual_stds = np.std(rankings, axis=(0, 2))
-    return pd.Series(individual_stds, index=predictor_dfs[0].columns)
-
-def pearson_correlation(x, y):
-    """
-    Simple correlation function (no checks).
-    """
-    return np.corrcoef(x, y)[0, 1]
-
-def calculate_scores_full(df_results_ranked, predictor_dfs):
-    """
-    Returns L2 distance measure for each predictor.
-    """
-    scores = []
-    for df in predictor_dfs:
-        diff = df_results_ranked - df
-        score = np.nansum(diff ** 2)
-        scores.append(score)
-    return np.array(scores)
-
-###############################################################################
-# Simulation: find correlation subsets
-###############################################################################
 def run_project_simulation(num_individuals, num_drugs, num_predictors,
                           min_correlation, N,
                           common_drugs, common_individuals,
@@ -180,16 +168,15 @@ def run_project_simulation(num_individuals, num_drugs, num_predictors,
 
     for iteration in range(num_iterations):
         temp_sim_data, gold_standard = RandomDataGenerator(num_individuals, num_drugs, num_predictors)
-
         predictor_dfs_sim = []
-        predictor_names_sim = []
         for key in temp_sim_data.keys():
             if key != 'GoldStandard':
-                df = pd.DataFrame(temp_sim_data[key],
-                                  index=common_drugs[:num_drugs],
-                                  columns=common_individuals[:num_individuals])
+                df = pd.DataFrame(
+                    temp_sim_data[key],
+                    index=common_drugs[:num_drugs],
+                    columns=common_individuals[:num_individuals]
+                )
                 predictor_dfs_sim.append(df)
-                predictor_names_sim.append(key)
 
         gold_standard_df = pd.DataFrame(
             temp_sim_data['GoldStandard'],
@@ -199,7 +186,6 @@ def run_project_simulation(num_individuals, num_drugs, num_predictors,
 
         drug_stds = compute_drug_stds(predictor_dfs_sim)
         sorted_drugs = drug_stds.sort_values(ascending=False).index.tolist()
-
         individual_stds = compute_individual_stds(predictor_dfs_sim)
         sorted_individuals = individual_stds.sort_values(ascending=False).index.tolist()
 
@@ -211,10 +197,8 @@ def run_project_simulation(num_individuals, num_drugs, num_predictors,
             top_drugs = sorted_drugs[:num_drug]
             for num_indiv in range(1, max_num_individuals + 1):
                 top_individuals = sorted_individuals[:num_indiv]
-
                 gold_subset = gold_standard_df.loc[top_drugs, top_individuals]
                 predictor_dfs_subset = [df.loc[top_drugs, top_individuals] for df in predictor_dfs_sim]
-
                 gold_mean_rank = gold_subset.mean(axis=1).rank(method='min')
                 corrs = []
                 for predictor_df in predictor_dfs_subset:
@@ -223,10 +207,8 @@ def run_project_simulation(num_individuals, num_drugs, num_predictors,
                     if np.isnan(corr_val):
                         corr_val = 0
                     corrs.append(corr_val)
-
                 avg_correlation = np.mean(corrs)
                 correlations_matrix[num_drug - 1, num_indiv - 1] = avg_correlation
-
                 subset_info = {
                     'Drugs': top_drugs,
                     'Individuals': top_individuals,
@@ -235,8 +217,6 @@ def run_project_simulation(num_individuals, num_drugs, num_predictors,
                     'NumIndividuals': num_indiv
                 }
                 all_subsets.append(subset_info)
-
-        # Only do 1 iteration typically
         break
 
     subsets_df = pd.DataFrame(all_subsets)
@@ -259,20 +239,19 @@ def run_project_simulation(num_individuals, num_drugs, num_predictors,
     return correlations_matrix, num_drugs_first, num_individuals_first, grouped_subsets
 
 ###############################################################################
-# Optimize Ranking Correlation
+# Optimize Ranking Correlation (used if we have a results file)
 ###############################################################################
 def optimize_ranking_correlation(df_results_ranked, predictor_dfs, min_correlation, N):
     full_data_scores = calculate_scores_full(df_results_ranked, predictor_dfs)
-    full_data_ranking = np.argsort(full_data_scores) + 1  # rank 1-based
+    full_data_ranking = np.argsort(full_data_scores) + 1
 
     num_drugs_total = len(df_results_ranked.index)
     num_individuals_total = len(df_results_ranked.columns)
-
     drug_stds = compute_drug_stds(predictor_dfs)
     sorted_drugs = drug_stds.sort_values(ascending=False).index.tolist()
     sorted_individuals = df_results_ranked.columns.tolist()
-
     correlations = np.zeros((num_drugs_total, num_individuals_total))
+
     drugs_used_dict, individuals_used_dict = {}, {}
     all_subsets = []
 
@@ -283,17 +262,13 @@ def optimize_ranking_correlation(df_results_ranked, predictor_dfs, min_correlati
         for ni in range(1, num_individuals_total + 1):
             top_individuals = sorted_individuals[:ni]
             individuals_used_dict[ni] = top_individuals
-
             df_results_subset = df_results_ranked.loc[top_drugs, top_individuals]
             predictor_dfs_subset = [df.loc[top_drugs, top_individuals] for df in predictor_dfs]
-
             subset_scores = calculate_scores_full(df_results_subset, predictor_dfs_subset)
             subset_ranking = np.argsort(subset_scores) + 1
-
             corr_val = pearson_correlation(subset_ranking, full_data_ranking)
             if np.isnan(corr_val):
                 corr_val = 0
-
             correlations[nd - 1, ni - 1] = corr_val
             subset_info = {
                 'NumDrugs': nd,
@@ -319,89 +294,58 @@ def optimize_ranking_correlation(df_results_ranked, predictor_dfs, min_correlati
     return correlations, nd_first, ni_first, subsets_df, drugs_used_dict, individuals_used_dict
 
 ###############################################################################
-# Static Heatmaps
+# Heatmap Visualization
 ###############################################################################
 def plot_static_heatmap(correlations_matrix, min_corr,
                         num_drugs_first, num_individuals_first,
                         subsets_df, N):
-    """
-    Plots a heatmap of correlations_matrix and a 10x10 zoom around the first subset.
-    If the matrix is larger than 100 in either dimension, we uniformly sample
-    down to 100 and remove annotations so the plot is clearer.
-    """
     if correlations_matrix is None or correlations_matrix.size == 0:
         return
 
     max_plot_dim = 100
     n_drugs, n_inds = correlations_matrix.shape
 
-    # Downsample if needed
     if n_drugs > max_plot_dim or n_inds > max_plot_dim:
         drg_indices = np.linspace(0, n_drugs - 1, max_plot_dim, dtype=int)
         ind_indices = np.linspace(0, n_inds - 1, max_plot_dim, dtype=int)
         matrix_to_plot = correlations_matrix[drg_indices][:, ind_indices]
-
         fig, ax = plt.subplots(figsize=(10, 8))
-        sns.heatmap(matrix_to_plot,
-                    cmap='Blues',
-                    cbar=True,
-                    square=True,
-                    annot=False)  # No annotations to avoid clutter
+        sns.heatmap(matrix_to_plot, cmap='Blues', cbar=True, square=True, annot=False)
         ax.set_title("Full Correlation Matrix (Downsampled)")
         ax.invert_yaxis()
         plt.tight_layout()
         plt.show()
     else:
-        # If smaller, we can annotate
         annot_data = np.empty_like(correlations_matrix, dtype=object)
         for r in range(correlations_matrix.shape[0]):
             for c in range(correlations_matrix.shape[1]):
                 annot_data[r, c] = f"{correlations_matrix[r, c]:.2f}"
-
         fig, ax = plt.subplots(figsize=(10, 8))
-        sns.heatmap(correlations_matrix,
-                    cmap='Blues',
-                    cbar=True,
-                    square=True,
-                    annot=annot_data,
-                    fmt="",
-                    xticklabels=False,
-                    yticklabels=False,
-                    ax=ax)
+        sns.heatmap(correlations_matrix, cmap='Blues', cbar=True, square=True,
+                    annot=annot_data, fmt="", xticklabels=False, yticklabels=False, ax=ax)
         ax.set_title("Full Correlation Matrix")
         ax.invert_yaxis()
         plt.tight_layout()
         plt.show()
 
-    # Zoom 10x10 around the first valid subset
     if num_drugs_first is not None and num_individuals_first is not None:
         idx_drug = num_drugs_first - 1
         idx_indiv = num_individuals_first - 1
         window_size = 10
-
         start_drug_idx = max(idx_drug - window_size // 2, 0)
         end_drug_idx = min(start_drug_idx + window_size, correlations_matrix.shape[0])
         start_indiv_idx = max(idx_indiv - window_size // 2, 0)
         end_indiv_idx = min(start_indiv_idx + window_size, correlations_matrix.shape[1])
-
-        zoomed_data = correlations_matrix[start_drug_idx:end_drug_idx,
-                                          start_indiv_idx:end_indiv_idx]
-
+        zoomed_data = correlations_matrix[start_drug_idx:end_drug_idx, start_indiv_idx:end_indiv_idx]
         if zoomed_data.size == 0:
             return
-
         annot_zoom = np.empty_like(zoomed_data, dtype=object)
         for r in range(zoomed_data.shape[0]):
             for c in range(zoomed_data.shape[1]):
                 annot_zoom[r, c] = f"{zoomed_data[r, c]:.2f}"
-
         fig, ax = plt.subplots(figsize=(12, 10))
-        sns.heatmap(zoomed_data,
-                    cmap='Blues',
-                    cbar=True,
-                    square=True,
-                    annot=annot_zoom,
-                    fmt="",
+        sns.heatmap(zoomed_data, cmap='Blues', cbar=True, square=True,
+                    annot=annot_zoom, fmt="",
                     xticklabels=range(start_indiv_idx+1, end_indiv_idx+1),
                     yticklabels=range(start_drug_idx+1, end_drug_idx+1),
                     ax=ax)
@@ -409,16 +353,11 @@ def plot_static_heatmap(correlations_matrix, min_corr,
         ax.set_ylabel('Number of Drugs')
         ax.set_title(f"Zoom 10x10 Around Subset: {num_drugs_first} drugs, {num_individuals_first} individuals")
         ax.invert_yaxis()
-
         for r in range(zoomed_data.shape[0]):
             for c in range(zoomed_data.shape[1]):
                 if zoomed_data[r, c] >= min_corr:
-                    rect = plt.Rectangle((c, r), 1, 1,
-                                         fill=False,
-                                         edgecolor="white",
-                                         linewidth=2)
+                    rect = plt.Rectangle((c, r), 1, 1, fill=False, edgecolor="white", linewidth=2)
                     ax.add_patch(rect)
-
         plt.tight_layout()
         plt.show()
 
@@ -426,9 +365,6 @@ def plot_static_heatmap(correlations_matrix, min_corr,
 # Bar Chart & PCA
 ###############################################################################
 def plot_bar_chart_with_significance(scores, predictor_labels, p_values):
-    """
-    Shows scaled L2-distance in a bar chart.
-    """
     buffer = 0.1
     max_score = max(scores)
     min_score = min(scores)
@@ -441,32 +377,31 @@ def plot_bar_chart_with_significance(scores, predictor_labels, p_values):
     else:
         scaled_scores = [0.5] * len(scores)
 
+    union_labels = predictor_labels + ["Results"]
+    unique_predictors = sorted(set(union_labels))
+    palette = sns.color_palette("Set2", len(unique_predictors))
+    color_map = {p: palette[i] for i, p in enumerate(unique_predictors)}
+    bar_colors = [color_map[label] for label in predictor_labels]
+
     plt.figure(figsize=(10, 6))
-    colors = sns.color_palette("Set2", len(scaled_scores))
-    plt.bar(predictor_labels, scaled_scores, color=colors)
+    plt.bar(predictor_labels, scaled_scores, color=bar_colors)
     plt.ylim([0, 1])
-    plt.xlabel('Predictors')
-    plt.ylabel('Score (Scaled)')
-    plt.title('Predictor Scores')
+    plt.xlabel('Predictors', fontsize=14)
+    plt.ylabel('Score (Scaled)', fontsize=14)
+    plt.title('Predictor Scores', fontsize=16)
     plt.tight_layout()
     plt.show()
 
 def plot_histogram_for_individual_correlations(df_results_ranked, predictor_dfs, predictor_names):
-    """
-    For each predictor, plot bar chart of correlation with results per individual.
-    """
     for idx, df_predictor in enumerate(predictor_dfs):
         individual_correlations = []
         individuals = df_results_ranked.columns
         for individual in individuals:
             corr = pearson_correlation(df_results_ranked[individual], df_predictor[individual])
             individual_correlations.append(corr)
-
-        overall_corr = pearson_correlation(df_results_ranked.values.flatten(),
-                                           df_predictor.values.flatten())
+        overall_corr = pearson_correlation(df_results_ranked.values.flatten(), df_predictor.values.flatten())
         median_corr = np.median(individual_correlations)
         avg_corr = np.mean(individual_correlations)
-
         plt.figure(figsize=(10, 4))
         plt.bar(individuals, individual_correlations, color='skyblue')
         plt.axhline(y=overall_corr, color='red', linestyle='--', label=f'Overall: {overall_corr:.2f}')
@@ -480,9 +415,6 @@ def plot_histogram_for_individual_correlations(df_results_ranked, predictor_dfs,
         plt.show()
 
 def apply_pca_and_plot(df_results_ranked, predictor_dfs, predictor_names, has_results):
-    """
-    PCA where each column is one sample in #drugs-dimensional space.
-    """
     all_data = []
     group_labels = []
 
@@ -513,24 +445,26 @@ def apply_pca_and_plot(df_results_ranked, predictor_dfs, predictor_names, has_re
     pc1_var = pca.explained_variance_ratio_[0] * 100
     pc2_var = pca.explained_variance_ratio_[1] * 100
 
-    unique_groups = sorted(list(set(group_labels)))
+    unique_groups = sorted(set(group_labels))
     palette = sns.color_palette("Set2", len(unique_groups))
     color_map = {grp: palette[i] for i, grp in enumerate(unique_groups)}
 
     plt.figure(figsize=(8, 6))
     for i, label in enumerate(group_labels):
-        plt.scatter(pca_result[i, 0],
-                    pca_result[i, 1],
-                    color=color_map[label],
-                    s=60,
-                    alpha=0.75,
-                    edgecolors='k')
-
-    handles = []
-    for grp in unique_groups:
-        handles.append(plt.Line2D([], [], marker="o", color=color_map[grp],
-                                  linestyle="", label=grp, markersize=10, markeredgecolor='k'))
-    plt.legend(handles=handles, title="Data Source", loc='best')
+        plt.scatter(
+            pca_result[i, 0],
+            pca_result[i, 1],
+            color=color_map[label],
+            s=60,
+            alpha=0.75,
+            edgecolors='k'
+        )
+    handles = [
+        plt.Line2D([], [], marker="o", color=color_map[grp],
+                   linestyle="", label=grp, markersize=10, markeredgecolor='k')
+        for grp in unique_groups
+    ]
+    plt.legend(handles=handles, loc='best')
     plt.xlabel(f"PC1 ({pc1_var:.2f}% Var)")
     plt.ylabel(f"PC2 ({pc2_var:.2f}% Var)")
     plt.title("PCA of Predictions vs. Results")
@@ -539,36 +473,25 @@ def apply_pca_and_plot(df_results_ranked, predictor_dfs, predictor_names, has_re
     plt.show()
 
 def plot_predictor_relationship_with_results_heatmap(predictor_dfs, results_df, predictor_names):
-    """
-    Plots correlation among all predictors + results (if present).
-    """
     all_dfs = []
     all_names = []
-
     if results_df is not None:
         all_dfs.append(results_df)
         all_names.append("Results")
-
     for i, df_pred in enumerate(predictor_dfs):
         all_dfs.append(df_pred)
         all_names.append(predictor_names[i])
-
     if len(all_dfs) == 0:
         return
-
     num_predictors = len(all_dfs)
     correlation_matrix = np.zeros((num_predictors, num_predictors))
-
     for i in range(num_predictors):
         for j in range(num_predictors):
-            cval = pearson_correlation(all_dfs[i].values.flatten(),
-                                       all_dfs[j].values.flatten())
+            cval = pearson_correlation(all_dfs[i].values.flatten(), all_dfs[j].values.flatten())
             correlation_matrix[i, j] = cval
-
     plt.figure(figsize=(6, 5))
     sns.heatmap(correlation_matrix, annot=True, fmt=".2f", cmap="Blues",
-                xticklabels=all_names,
-                yticklabels=all_names,
+                xticklabels=all_names, yticklabels=all_names,
                 cbar_kws={'label': 'Pearson Corr'})
     plt.title("Predictors-Results Correlation")
     plt.tight_layout()
@@ -580,18 +503,16 @@ def plot_predictor_relationship_with_results_heatmap(predictor_dfs, results_df, 
 def permutation_test(df_results_ranked, predictor_dfs, n_permutations=10):
     actual_scores = calculate_scores_full(df_results_ranked, predictor_dfs)
     permuted_scores_distribution = np.zeros((n_permutations, len(predictor_dfs)))
-
     for perm_idx in range(n_permutations):
         permuted_results = df_results_ranked.apply(np.random.permutation, axis=0)
         permuted_scores = calculate_scores_full(permuted_results, predictor_dfs)
         permuted_scores_distribution[perm_idx] = permuted_scores
-
     p_values = []
     for i in range(len(actual_scores) - 1):
         for j in range(i + 1, len(actual_scores)):
             actual_diff = abs(actual_scores[i] - actual_scores[j])
-            perm_diff_distribution = np.abs(permuted_scores_distribution[:, i]
-                                            - permuted_scores_distribution[:, j])
+            perm_diff_distribution = np.abs(permuted_scores_distribution[:, i] -
+                                            permuted_scores_distribution[:, j])
             p_value = np.mean(perm_diff_distribution >= actual_diff)
             p_values.append((i, j, p_value))
     return p_values, actual_scores
@@ -600,9 +521,6 @@ def permutation_test(df_results_ranked, predictor_dfs, n_permutations=10):
 # Cost-Effectiveness
 ###############################################################################
 def build_cost_dict(subsets_df):
-    """
-    Convert subsets (NumIndividuals, NumDrugs, Correlation) -> dict for dash.
-    """
     data_dict = {}
     if subsets_df is None or subsets_df.empty:
         return data_dict
@@ -612,18 +530,11 @@ def build_cost_dict(subsets_df):
     return data_dict
 
 def plot_cost_effectiveness_heatmap(data_dict, min_corr):
-    """
-    Builds a cost matrix from data_dict and plots it.
-    If all are zero, no plot. Also does a 10x10 zoom around the max cell,
-    but with annotations for the zoomed region.
-    """
     if not data_dict:
         return
-
     subset_labels = list(data_dict.keys())
     x_values = sorted({int(lbl.split('i')[1].split('d')[0]) for lbl in subset_labels})
     y_values = sorted({int(lbl.split('d')[1]) for lbl in subset_labels})
-
     cost_matrix = np.zeros((len(y_values), len(x_values)))
     for lbl, corr_val in data_dict.items():
         i_val = int(lbl.split('i')[1].split('d')[0])
@@ -635,76 +546,46 @@ def plot_cost_effectiveness_heatmap(data_dict, min_corr):
             cost_matrix[y_idx, x_idx] = cost
         else:
             cost_matrix[y_idx, x_idx] = 0.0
-
     if np.allclose(cost_matrix, 0):
         return
-
     fig_width = min(20, len(x_values) / 2 + 2)
     fig_height = min(20, len(y_values) / 2 + 2)
     fig, ax = plt.subplots(figsize=(fig_width, fig_height))
     vmax = cost_matrix.max() * 1.05 if cost_matrix.max() > 0 else 1
-
-    # Main cost heatmap (no annotation to avoid clutter)
-    sns.heatmap(cost_matrix,
-                cmap="YlOrRd",
-                vmin=0,
-                vmax=vmax,
-                annot=False,
-                xticklabels=x_values,
-                yticklabels=y_values,
-                ax=ax)
+    sns.heatmap(cost_matrix, cmap="YlOrRd", vmin=0, vmax=vmax, annot=False,
+                xticklabels=x_values, yticklabels=y_values, ax=ax)
     ax.set_xlabel("Number of Individuals")
     ax.set_ylabel("Number of Drugs")
     ax.set_title("Cost-Effectiveness Heatmap")
     ax.invert_yaxis()
     plt.tight_layout()
     plt.show()
-
     max_coord = np.unravel_index(np.argmax(cost_matrix), cost_matrix.shape)
     max_y, max_x = max_coord[0], max_coord[1]
-
     window_size = 10
     start_x_idx = max(max_x - window_size // 2, 0)
     end_x_idx = min(start_x_idx + window_size, cost_matrix.shape[1])
     start_y_idx = max(max_y - window_size // 2, 0)
     end_y_idx = min(start_y_idx + window_size, cost_matrix.shape[0])
-
     zoomed_cost = cost_matrix[start_y_idx:end_y_idx, start_x_idx:end_x_idx]
     if zoomed_cost.size == 0:
         return
-
     fig, ax = plt.subplots(figsize=(6, 5))
     vmax_zoom = zoomed_cost.max() * 1.05 if zoomed_cost.max() > 0 else 1
-
     x_labels = [x_values[x] for x in range(start_x_idx, end_x_idx)]
     y_labels = [y_values[y] for y in range(start_y_idx, end_y_idx)]
-
-    # Zoomed heatmap with annotations
-    sns.heatmap(zoomed_cost,
-                cmap="YlOrRd",
-                vmin=0,
-                vmax=vmax_zoom,
-                annot=True,
-                fmt=".2f",
-                xticklabels=x_labels,
-                yticklabels=y_labels,
-                ax=ax)
+    sns.heatmap(zoomed_cost, cmap="YlOrRd", vmin=0, vmax=vmax_zoom, annot=True,
+                fmt=".2f", xticklabels=x_labels, yticklabels=y_labels, ax=ax)
     ax.set_xlabel("Number of Individuals")
     ax.set_ylabel("Number of Drugs")
     ax.set_title("Zoomed 10x10 Around Most Cost-Effective")
     ax.invert_yaxis()
-
-    flat_coords = [(r, c) for r in range(zoomed_cost.shape[0])
-                   for c in range(zoomed_cost.shape[1])]
+    flat_coords = [(r, c) for r in range(zoomed_cost.shape[0]) for c in range(zoomed_cost.shape[1])]
     sorted_by_val = sorted(flat_coords, key=lambda rc: zoomed_cost[rc[0], rc[1]], reverse=True)
     top10 = sorted_by_val[:10]
     for (r, c) in top10:
-        rect = plt.Rectangle((c, r), 1, 1,
-                             fill=False,
-                             edgecolor="white",
-                             linewidth=2)
+        rect = plt.Rectangle((c, r), 1, 1, fill=False, edgecolor="white", linewidth=2)
         ax.add_patch(rect)
-
     plt.tight_layout()
     plt.show()
 
@@ -719,18 +600,26 @@ def file_input_gui():
              sg.FileBrowse(file_types=(("CSV Files", "*.csv"),))]
         ], key='PredictorsColumn')],
         [sg.Button('+', key='AddPredictor')],
-        [sg.Checkbox('No results file (use simulation)', key='NoResults', default=False, enable_events=True)],
-        [sg.Text('Select CSV file for results:', key='ResultsLabel', visible=True)],
-        [sg.Input(key='Results', visible=True),
-         sg.FileBrowse(file_types=(("CSV Files", "*.csv"),), key='ResultsBrowse', visible=True)],
-        [sg.Checkbox('Data is already ranked', key='Ranked', default=False)],
-        [sg.Text('Simulation Parameters:')],
+        [sg.Checkbox('No results file', key='NoResults', default=False, enable_events=True)],
+
+        [sg.Text('Select CSV file for results:', key='ResultsLabel'),
+         sg.Input(key='Results'),
+         sg.FileBrowse(file_types=(("CSV Files", "*.csv"),), key='ResultsBrowse')],
+
         [sg.Text('Minimum correlation:', key='MinCorrLabel'),
          sg.InputText('0.7', key='MinCorrelation')],
+
         [sg.Text('Number of subsets to find (N):', key='NumSubsetsLabel'),
          sg.InputText('1', key='NumSubsets')],
-        [sg.Text('Number of iterations:', key='NumIterationsLabel', visible=False),
-         sg.InputText('1', key='NumIterations', visible=False)],
+
+        # Removed the "Number of iterations" line since it's no longer needed for 'no results' mode
+        [sg.Text('Top STD Individuals:', key='STDIndLabel', visible=False),
+         sg.InputText('1', key='STDIndInput', visible=False)],
+
+        [sg.Text('Top STD Drugs:', key='STDDrugLabel', visible=False),
+         sg.InputText('1', key='STDDrugInput', visible=False)],
+
+        [sg.Checkbox('Data is already ranked', key='Ranked', default=False)],
         [sg.Button('Submit'), sg.Button('Cancel')]
     ]
 
@@ -741,7 +630,7 @@ def file_input_gui():
         event, values = window.read()
         if event in (sg.WINDOW_CLOSED, 'Cancel'):
             window.close()
-            return None, None, None, None, None, None, None
+            return (None, None, None, None, None, None, None, None, None)
 
         if event == 'AddPredictor':
             new_key = f'Predictor{len(predictor_keys)}'
@@ -755,17 +644,35 @@ def file_input_gui():
 
         if event == 'NoResults':
             if values['NoResults']:
+                # Hide results/correlation fields
                 window['ResultsLabel'].update(visible=False)
                 window['Results'].update(visible=False)
                 window['ResultsBrowse'].update(visible=False)
-                window['NumIterationsLabel'].update(visible=True)
-                window['NumIterations'].update(visible=True)
+                window['MinCorrLabel'].update(visible=False)
+                window['MinCorrelation'].update(visible=False)
+                window['NumSubsetsLabel'].update(visible=False)
+                window['NumSubsets'].update(visible=False)
+
+                # Show STD fields
+                window['STDIndLabel'].update(visible=True)
+                window['STDIndInput'].update(visible=True)
+                window['STDDrugLabel'].update(visible=True)
+                window['STDDrugInput'].update(visible=True)
             else:
+                # Show results/correlation fields
                 window['ResultsLabel'].update(visible=True)
                 window['Results'].update(visible=True)
                 window['ResultsBrowse'].update(visible=True)
-                window['NumIterationsLabel'].update(visible=False)
-                window['NumIterations'].update(visible=False)
+                window['MinCorrLabel'].update(visible=True)
+                window['MinCorrelation'].update(visible=True)
+                window['NumSubsetsLabel'].update(visible=True)
+                window['NumSubsets'].update(visible=True)
+
+                # Hide STD fields
+                window['STDIndLabel'].update(visible=False)
+                window['STDIndInput'].update(visible=False)
+                window['STDDrugLabel'].update(visible=False)
+                window['STDDrugInput'].update(visible=False)
             window.refresh()
 
         if event == 'Submit':
@@ -777,33 +684,49 @@ def file_input_gui():
                 sg.popup("Please select at least one predictor file.", title="Error")
                 continue
 
-            try:
-                min_correlation = float(values['MinCorrelation'])
-                num_subsets = int(values['NumSubsets'])
-            except ValueError:
-                sg.popup("Enter valid numbers for min correlation and subsets.", title="Error")
-                continue
-
             if no_results:
-                try:
-                    num_iterations = int(values['NumIterations'])
-                except ValueError:
-                    sg.popup("Enter a valid integer for number of iterations.", title="Error")
-                    continue
+                # 'no results' mode
                 results_file = None
+                try:
+                    top_std_individuals_user = int(values['STDIndInput'])
+                    top_std_drugs_user = int(values['STDDrugInput'])
+                except ValueError:
+                    sg.popup("Enter valid integers for top STD fields.", title="Error")
+                    continue
+                min_correlation = None
+                num_subsets = None
+                num_iterations = None
             else:
+                # 'results' mode
                 results_file = values['Results']
                 if not results_file:
-                    sg.popup("Select a results file or choose simulation option.", title="Error")
+                    sg.popup("Select a results file or check 'No results file'.", title="Error")
+                    continue
+                try:
+                    min_correlation = float(values['MinCorrelation'])
+                    num_subsets = int(values['NumSubsets'])
+                except ValueError:
+                    sg.popup("Enter valid numeric values for correlation/subsets.", title="Error")
                     continue
                 num_iterations = None
+                top_std_individuals_user = None
+                top_std_drugs_user = None
 
             window.close()
-            return (predictor_files, results_file, is_ranked,
-                    no_results, min_correlation, num_subsets, num_iterations)
+            return (
+                predictor_files,
+                results_file,
+                is_ranked,
+                no_results,
+                min_correlation,
+                num_subsets,
+                num_iterations,
+                top_std_individuals_user,
+                top_std_drugs_user
+            )
 
 ###############################################################################
-# Global placeholders for the Dash app
+# Global placeholders
 ###############################################################################
 drugs_used_dict_global = {}
 individuals_used_dict_global = {}
@@ -819,8 +742,9 @@ def main():
     global data_dict_global
     global min_corr_global
 
-    (predictor_files, results_file, is_ranked,
-     no_results, min_correlation, num_subsets, num_iterations) = file_input_gui()
+    (predictor_files, results_file, is_ranked, no_results,
+     min_correlation, num_subsets, num_iterations,
+     top_std_individuals_user, top_std_drugs_user) = file_input_gui()
 
     if not predictor_files:
         return
@@ -828,7 +752,6 @@ def main():
     drugs_used_dict_global = {}
     individuals_used_dict_global = {}
     data_dict_global = {}
-    min_corr_global = min_correlation
 
     try:
         (data_dict,
@@ -844,39 +767,25 @@ def main():
         )
 
         if no_results:
-            num_predictors = len(predictor_names)
-            num_drugs = len(common_drugs)
-            num_individuals = len(common_individuals)
+            all_drug_stds = compute_drug_stds(ranked_predictor_dfs)
+            sorted_drugs_by_std = all_drug_stds.sort_values(ascending=False)
+            all_indiv_stds = compute_individual_stds(ranked_predictor_dfs)
+            sorted_indiv_by_std = all_indiv_stds.sort_values(ascending=False)
 
-            (correlations_matrix,
-             num_drugs_first,
-             num_individuals_first,
-             subsets_df) = run_project_simulation(
-                 num_individuals,
-                 num_drugs,
-                 num_predictors,
-                 min_correlation,
-                 num_subsets,
-                 common_drugs,
-                 common_individuals,
-                 predictor_names,
-                 num_iterations
-            )
+            chosen_drugs = list(sorted_drugs_by_std.index[:top_std_drugs_user])
+            chosen_individuals = list(sorted_indiv_by_std.index[:top_std_individuals_user])
 
-            if correlations_matrix is not None and correlations_matrix.size > 0:
-                plot_static_heatmap(correlations_matrix,
-                                    min_correlation,
-                                    num_drugs_first,
-                                    num_individuals_first,
-                                    subsets_df,
-                                    num_subsets)
-
-            data_dict_global = build_cost_dict(subsets_df)
-            plot_cost_effectiveness_heatmap(data_dict_global, min_correlation)
+            print("########## Highest Standard Deviations ##########")
+            print(f"Top {top_std_drugs_user} Drugs by STD:")
+            print(chosen_drugs)
+            print("")
+            print(f"Top {top_std_individuals_user} Individuals by STD:")
+            print(chosen_individuals)
+            print("#####################################")
 
         else:
+            min_corr_global = min_correlation
             has_results = (df_results_ranked is not None)
-
             p_values, full_data_scores = permutation_test(df_results_ranked, ranked_predictor_dfs)
             plot_bar_chart_with_significance(full_data_scores, predictor_names, p_values)
             plot_histogram_for_individual_correlations(df_results_ranked, ranked_predictor_dfs, predictor_names)
@@ -913,15 +822,9 @@ def main():
         print(f"Error occurred: {e}")
 
 ###############################################################################
-# Dash App for Interactive Heatmaps
+# Dash App
 ###############################################################################
 def run_dash_app():
-    """
-    After calling main(), we have data_dict_global, min_corr_global,
-    and dictionaries from the last optimization call.
-    We'll plot a 10x10 window around the best correlation cell in correlation space,
-    plus a cost-effectiveness version side by side.
-    """
     subset_labels = list(data_dict_global.keys())
     if not subset_labels:
         print("No data available for the Dash app.")
@@ -937,20 +840,17 @@ def run_dash_app():
         if d > max_d:
             max_d = d
 
-    # Build the correlation matrix
     corr_matrix_full = np.zeros((max_d, max_i))
     for lbl, val in data_dict_global.items():
         i = int(lbl.split('i')[1].split('d')[0])
         d = int(lbl.split('d')[1])
         corr_matrix_full[d - 1, i - 1] = val
 
-    # Find best subset by correlation
     best_key = max(data_dict_global, key=data_dict_global.get)
     best_i = int(best_key.split('i')[1].split('d')[0])
     best_d = int(best_key.split('d')[1])
 
     window_size = 10
-
     start_i = best_i - window_size // 2
     end_i = start_i + window_size
     if start_i < 1:
@@ -969,10 +869,7 @@ def run_dash_app():
         end_d = max_d
         start_d = max(end_d - window_size + 1, 1)
 
-    # Submatrix for correlation
     corr_sub = corr_matrix_full[start_d-1:end_d-1, start_i-1:end_i-1]
-
-    # Build cost submatrix using correlation sub for reference
     cost_sub = np.zeros_like(corr_sub)
     for r in range(corr_sub.shape[0]):
         for c in range(corr_sub.shape[1]):
@@ -985,15 +882,11 @@ def run_dash_app():
                 cost_val = 0.0
             cost_sub[r, c] = cost_val
 
-    # Build x/y labels
     x_labels = [str(i) for i in range(start_i, end_i)]
     y_labels = [str(d) for d in range(start_d, end_d)]
-
     sub_width = corr_sub.shape[1]
     sub_height = corr_sub.shape[0]
 
-    # Correlation figure
-    # We'll create custom annotations from corr_sub
     annotations_corr = []
     zmin_corr = corr_sub.min()
     zmax_corr = corr_sub.max()
@@ -1003,8 +896,8 @@ def run_dash_app():
             text_color = "white" if val >= min_corr_global else "black"
             annotations_corr.append(dict(
                 text=f"{val:.2f}",
-                x=col,  # sub index
-                y=row,  # sub index
+                x=col,
+                y=row,
                 xref='x1',
                 yref='y1',
                 showarrow=False,
@@ -1041,7 +934,6 @@ def run_dash_app():
     )
     fig_corr = go.Figure(data=[heatmap_corr], layout=layout_corr)
 
-    # Cost figure
     annotations_cost = []
     zmin_cost = cost_sub.min()
     zmax_cost = cost_sub.max()
@@ -1112,14 +1004,11 @@ def run_dash_app():
         if clickData is None:
             return "Click a cell in the Correlation Heatmap."
         point = clickData['points'][0]
-        x_sub = int(point['x'])  # 0-based within the submatrix
+        x_sub = int(point['x'])
         y_sub = int(point['y'])
-
         i_val = start_i + x_sub
         d_val = start_d + y_sub
-
         corr_val = corr_matrix_full[d_val - 1, i_val - 1]
-
         drugs = drugs_used_dict_global.get(d_val, [])
         individuals = individuals_used_dict_global.get(i_val, [])
         info = (f"Subset => #Drugs={d_val}, #Individuals={i_val}\n"
@@ -1138,15 +1027,12 @@ def run_dash_app():
         point = clickData['points'][0]
         x_sub = int(point['x'])
         y_sub = int(point['y'])
-
         i_val = start_i + x_sub
         d_val = start_d + y_sub
-
         corr_val = corr_matrix_full[d_val - 1, i_val - 1]
         cost_val = 0.0
         if corr_val >= min_corr_global:
             cost_val = (corr_val / (i_val + d_val)) * 100.0
-
         drugs = drugs_used_dict_global.get(d_val, [])
         individuals = individuals_used_dict_global.get(i_val, [])
         info = (f"Subset => #Drugs={d_val}, #Individuals={i_val}\n"
@@ -1156,7 +1042,7 @@ def run_dash_app():
                 f"Individuals: {individuals}\n")
         return info
 
-    app.run_server(debug=True, use_reloader=False, port=8090)
+    app.run_server(debug=True, use_reloader=False, port=8080)
 
 ###############################################################################
 # Entry Point
