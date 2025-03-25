@@ -1,3 +1,27 @@
+#version 1.5
+#Current Updates:
+#Each iteration now identifies the best way to subset data from the induced noise, giving further strength to the results
+#Subsetting was changed for more effective and correct execution and results
+#Results improved due to various informed selections applied, thus a new color scheme was applied to better differentiate the correlations.
+#Further fine tuning and version updates will be carried continuously to apply future projects (e.g. weighting the percentile of induced substitution) and to further optimize simulation to real-life scenarios.
+
+import warnings
+warnings.filterwarnings(
+    "ignore",
+    message="Degrees of freedom <= 0 for slice",
+    category=RuntimeWarning
+)
+warnings.filterwarnings(
+    "ignore",
+    message="invalid value encountered in divide",
+    category=RuntimeWarning
+)
+warnings.filterwarnings(
+    "ignore",
+    message="invalid value encountered in scalar divide",
+    category=RuntimeWarning
+)
+
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
@@ -24,6 +48,70 @@ drugs_used_dict_global = {}
 individuals_used_dict_global = {}
 
 ###############################################################################
+# HELPER to Compare Arbitrary vs. STD-based for Each Axis
+###############################################################################
+def compare_selection_methods_for_run_project(
+    num_individual, num_drugs,
+    data, list_of_stds, individual_stds,
+    subset_correlation_func
+):
+    """
+    Compares the average correlation from "top 2 Arbitrary" vs. "top 2 Highest STD"
+    for DRUGS and for INDIVIDUALS, using the existing 'subset_correlation' logic.
+    Returns booleans indicating which approach to use, plus average correlation
+    for each approach.
+    """
+
+    # For DRUG axis: measure correlation for i_count = num_individual, d_count = 2
+    c_arbitrary_drugs = subset_correlation_func(
+        num_individual,
+        2,
+        data,
+        list_of_stds,
+        individual_stds,
+        select_high_std_drugs=False,
+        select_high_std_individuals=False
+    )
+    c_std_drugs = subset_correlation_func(
+        num_individual,
+        2,
+        data,
+        list_of_stds,
+        individual_stds,
+        select_high_std_drugs=True,
+        select_high_std_individuals=False
+    )
+
+    # For INDIVIDUAL axis: i_count=2, d_count=num_drugs
+    c_arbitrary_inds = subset_correlation_func(
+        2,
+        num_drugs,
+        data,
+        list_of_stds,
+        individual_stds,
+        select_high_std_drugs=False,
+        select_high_std_individuals=False
+    )
+    c_std_inds = subset_correlation_func(
+        2,
+        num_drugs,
+        data,
+        list_of_stds,
+        individual_stds,
+        select_high_std_drugs=False,
+        select_high_std_individuals=True
+    )
+
+    use_std_drugs = True if c_std_drugs >= c_arbitrary_drugs else False
+    use_std_inds  = True if c_std_inds >= c_arbitrary_inds else False
+
+    return (
+        use_std_drugs, use_std_inds,
+        c_arbitrary_drugs, c_std_drugs,
+        c_arbitrary_inds, c_std_inds
+    )
+
+###############################################################################
 # MAIN
 ###############################################################################
 def main():
@@ -39,14 +127,18 @@ def main():
     num_predictors = int(input("Enter key (3rd dimension - predictors): "))
     num_drugs = int(input("Enter columns (drugs): "))
 
+    # If the dataset is not square, we just keep going but note it
+    if num_individual != num_drugs:
+        print(f"NOTE: The dataset is asymmetrical ({num_individual} x {num_drugs}).")
+
     corr = float(input("Enter minimum correlation wanted: "))
     distance = float(input("Enter distance acceptable from correlation: "))
 
-    # Single or multiple
+    # Single or multiple simulations
     if num_iterations > 1:
         run_multiple_simulations(num_individual, num_drugs, num_predictors, corr, distance, None, num_iterations)
     else:
-        # single
+        print("\n--- Single simulation run ---")
         results, drugs_used_dict, individuals_used_dict = run_project(
             num_individual, num_drugs, num_predictors, corr,
             distance, None, True, True
@@ -62,7 +154,7 @@ def main():
             scores_byI_arbitrary,
             corrByD_arbitrary,
             corrByI_arbitrary,
-            best_predictor,
+            best_predictor_scores,
             list_of_stds,
             individual_stds,
             scores_byD_high_std,
@@ -71,22 +163,22 @@ def main():
             corrByI_high_std
         ) = results
 
-        # 1) Combined predictor scores
-        plot_combined_scores([best_predictor], best_predictor)
+        # 1) Plot combined predictor scores (bar + boxplot).
+        plot_combined_scores([best_predictor_scores], best_predictor_scores)
 
-        # 2) Combined graphs
+        # 2) Plot combined graphs (arbitrary vs. high-std, for both drugs & individuals)
         plot_combined_graphs(
             scores_byD_arbitrary, corrByD_arbitrary,
             scores_byI_arbitrary, corrByI_arbitrary,
-            scores_byD_high_std, corrByD_high_std,
-            scores_byI_high_std, corrByI_high_std,
+            scores_byD_high_std,  corrByD_high_std,
+            scores_byI_high_std,  corrByI_high_std,
             list_of_stds, individual_stds
         )
 
-        # 3) Static heatmap for correlation
+        # 3) Static heatmap for correlation across all subsets
         plot_static_heatmap(best_subsetDict, title="Single Simulation Heatmap of Subsets", min_corr=corr)
 
-        # store global references
+        # Store references globally for subsequent plotting/logging
         global data_dict_global, scores_byD_high_std_global, scores_byI_high_std_global
         global min_corr_global, drugs_used_dict_global, individuals_used_dict_global
 
@@ -97,11 +189,11 @@ def main():
         drugs_used_dict_global = drugs_used_dict
         individuals_used_dict_global = individuals_used_dict
 
-    # After single or multiple runs, produce extra plots/logs and run Dash:
-    # 1) Cost-effectiveness heatmap
+    # After single or multiple runs:
+    # 1) Plot cost-effectiveness heatmap
     plot_cost_effectiveness_heatmap(data_dict_global, min_corr_global)
 
-    # 2) LOG top subsets (correlation, cost)
+    # 2) Log top subsets by correlation and cost-effectiveness
     log_top_correlation_subsets(
         data_dict_global, min_corr_global,
         drugs_used_dict_global, individuals_used_dict_global, topN=10
@@ -111,13 +203,12 @@ def main():
         drugs_used_dict_global, individuals_used_dict_global, topN=10
     )
 
-    # 3) Zoomed-in static heatmaps
+    # 3) Zoomed-in static heatmaps (correlation & cost)
     plot_zoomed_in_correlation_heatmap(data_dict_global, min_corr_global, topN=10)
     plot_zoomed_in_cost_heatmap(data_dict_global, min_corr_global, topN=10)
 
-    # 4) Run the updated Dash app (side-by-side correlation & cost sub-heatmaps) on port 8060
+    # 4) Launch the Dash app on port 8060
     run_dash_app(port=8060)
-
 
 ###############################################################################
 # FILE/IO UTILITIES
@@ -175,17 +266,53 @@ def export_ranked_data(ranked_data, num_predictors):
 # BASIC HELPER FUNCTIONS
 ###############################################################################
 def pearson_correlation(x, y):
-    if len(x) != len(y):
-        raise ValueError("The lists must have the same length.")
-    correlation = np.corrcoef(x, y)[0, 1]
-    return correlation
+    """
+    Final correlation is computed on integer arrays (the ranks).
+    Tie-break offsets are used only to break ties prior to converting
+    float scores to integer ranks.
+    """
+    if len(x) != len(y) or len(x) == 0:
+        return 0.0
+    if np.all(x == x[0]) or np.all(y == y[0]):
+        return 0.0
+    c = np.corrcoef(x, y)[0, 1]
+    return 0.0 if np.isnan(c) else c
 
 def rank_integers(lst):
-    rank_dict = {val: i + 1 for i, val in enumerate(sorted(lst))}
-    return [rank_dict[val] for val in lst]
+    """
+    Tie-breaker logic: we add a tiny random offset so no two float values
+    remain exactly identical. Then we assign integer ranks [1..N].
+    The final correlation is done on these integer ranks, not the floats.
+    """
+    eps = 1e-9
+    noisy = [val + random.uniform(0, eps) for val in lst]
+
+    sorted_vals = sorted(noisy, reverse=True)
+    rank_map = {}
+    current_rank = 1
+    for val in sorted_vals:
+        if val not in rank_map:
+            rank_map[val] = current_rank
+            current_rank += 1
+
+    # Return integer ranks
+    return [rank_map[v] for v in noisy]
+
+def normalize_and_invert(scores):
+    """
+    Convert raw sums-of-squared-diffs into [0..1] by min-max scaling,
+    then invert => higher = better.
+    """
+    if not scores:
+        return []
+    arr = np.array(scores).reshape(-1,1)
+    scaler = MinMaxScaler()
+    normed = scaler.fit_transform(arr).flatten()
+    inverted = 1.0 - normed
+    return inverted.tolist()
 
 ###############################################################################
-# SCORING-RELATED FUNCTIONS (CORE LOGIC - UNCHANGED)
+# SCORING & RANDOM DATA GENERATION
 ###############################################################################
 def drug_standardDeviation(d, data, num_individuals, num_predictors):
     list_drug_rank_per_pred = []
@@ -212,22 +339,24 @@ def RandomDataGenerator(num_individuals, num_drugs, num_predictors, gold_standar
         if gold_standard.ndim == 3:
             gold_standard = gold_standard[0]
 
-    temp_sim_data["Predictor {0}".format(counter)] = gold_standard
+    temp_sim_data[f"Predictor {counter}"] = gold_standard
     results_GS = {"Test Results": gold_standard}
 
     for counter in range(1, num_predictors):
-        degraded_predictor = np.copy(temp_sim_data["Predictor {0}".format(counter - 1)])
+        degraded_predictor = np.copy(temp_sim_data[f"Predictor {counter - 1}"])
         num_individuals_to_change = counter
         num_pairs_to_swap = counter
 
         for _ in range(num_individuals_to_change):
             individual_to_change = random.randint(0, num_individuals - 1)
-            for _ in range(num_pairs_to_swap):
+            for _2 in range(num_pairs_to_swap):
                 drug1, drug2 = random.sample(range(num_drugs), 2)
-                degraded_predictor[individual_to_change][drug1], degraded_predictor[individual_to_change][drug2] = \
-                    degraded_predictor[individual_to_change][drug2], degraded_predictor[individual_to_change][drug1]
+                degraded_predictor[individual_to_change][drug1], degraded_predictor[individual_to_change][drug2] = (
+                    degraded_predictor[individual_to_change][drug2],
+                    degraded_predictor[individual_to_change][drug1]
+                )
 
-        temp_sim_data["Predictor {0}".format(counter)] = degraded_predictor
+        temp_sim_data[f"Predictor {counter}"] = degraded_predictor
 
     temp_sim_data["Gold Standard"] = results_GS["Test Results"]
     return temp_sim_data, results_GS
@@ -257,216 +386,211 @@ def individual_selector(i, list_of_stds):
     return sorted_indices
 
 ###############################################################################
-# run_project (CORE LOGIC - UNCHANGED)
+# subset_correlation (small helper)
+###############################################################################
+def subset_correlation_func(i_count, d_count, data, list_of_stds, individual_stds,
+                            select_high_std_drugs, select_high_std_individuals):
+    """
+    1) Compute partial sums-of-squared differences => invert => float array
+    2) Convert float array to integer ranks (via rank_integers)
+    3) Compare subset's integer ranks to the full's integer ranks
+    4) Return Pearson correlation of those integer arrays
+    """
+    def score_predictors(data, n_drugs_to_rank, drug_filter, indiv_filter):
+        predictor_keys = list(data.keys())[:-1]
+        predictor_scores = []
+        for predictor in predictor_keys:
+            total_diff = 0.0
+            for ind in indiv_filter:
+                for drg_idx in drug_filter:
+                    diff = data[predictor][ind][drg_idx] - data["Gold Standard"][ind][drg_idx]
+                    total_diff += diff**2
+            predictor_scores.append(total_diff)
+        return normalize_and_invert(predictor_scores)
+
+    num_individual = len(data["Gold Standard"])
+    num_drugs = len(data["Gold Standard"][0])
+
+    if select_high_std_drugs:
+        topd = drug_selector(d_count, list_of_stds)
+    else:
+        topd = list(range(d_count))
+
+    if select_high_std_individuals:
+        topi = individual_selector(i_count, individual_stds)
+    else:
+        topi = list(range(i_count))
+
+    # Subset scores => integer ranks
+    sub_scores = score_predictors(data, d_count, topd, topi)
+    sub_ranks = rank_integers(sub_scores)
+
+    # Full scores => integer ranks
+    full_drug_filter = list(range(num_drugs))
+    full_indiv_filter = list(range(num_individual))
+    full_scores = score_predictors(data, num_drugs, full_drug_filter, full_indiv_filter)
+    full_ranks = rank_integers(full_scores)
+
+    c_ = pearson_correlation(sub_ranks, full_ranks)
+    # Force largest subset => correlation=1.0
+    if i_count == num_individual and d_count == num_drugs:
+        c_ = 1.0
+    return c_
+
+###############################################################################
+# CORE: run_project
 ###############################################################################
 def run_project(num_individual, num_drugs, num_predictors, corr, distance, data,
                 select_high_std_drugs=False, select_high_std_individuals=False):
-    temp_sim_data = {}
-    results_GS = {}
-    individual_stds = []
-
+    """
+    1) Generate random data if 'data' is None.
+    2) Compare 'arbitrary' vs 'high std' approach => print chosen method for each axis.
+    3) Score each predictor by sum-of-squared-differences => minmax => invert => rank_integers
+    4) Build final subset correlation dictionary, 6-axis data, etc.
+    """
     simulated_Data, results_GS = RandomDataGenerator(num_individual, num_drugs, num_predictors, data)
-    print(f"Simulated Data: {simulated_Data}")  # Debug print
-
     list_of_stds = listTheStds(simulated_Data, num_individual, num_predictors, num_drugs)
-    print(f"List of STDs: {list_of_stds}")  # Debug print
 
     if data is None:
         data = simulated_Data
 
-    # Selection logic
-    if select_high_std_drugs:
-        drugs_to_filter_by = drug_selector(num_drugs, list_of_stds)
-    else:
-        drugs_to_filter_by = list(range(num_drugs))
+    individual_stds = individual_standardDeviation(data, num_individual, num_predictors, num_drugs)
 
-    if select_high_std_individuals:
-        individual_stds = individual_standardDeviation(data, num_individual, num_predictors, num_drugs)
-        individuals_to_filter_by = individual_selector(num_individual, individual_stds)
-    else:
-        individuals_to_filter_by = list(range(num_individual))
+    # Compare Arbitrary vs STD-based:
+    (
+        use_std_drugs, use_std_inds,
+        c_arb_drug, c_std_drug,
+        c_arb_ind,  c_std_ind
+    ) = compare_selection_methods_for_run_project(
+        num_individual, num_drugs,
+        data, list_of_stds, individual_stds,
+        subset_correlation_func
+    )
 
-    print("Selected drugs:", drugs_to_filter_by)  # Debug print
-    print("Selected individuals:", individuals_to_filter_by)  # Debug print
+    print(f"Drug selection method: {'High STD' if use_std_drugs else 'Arbitrary'} "
+          f"(AvgCorr STD={c_std_drug:.3f}, Arb={c_arb_drug:.3f})")
+    print(f"Individual selection method: {'High STD' if use_std_inds else 'Arbitrary'} "
+          f"(AvgCorr STD={c_std_ind:.3f}, Arb={c_arb_ind:.3f})")
 
-    def rank_predictors(data, n_drugs_to_rank, drugs_to_filter, individuals_to_filter):
-        n_predictors = len(data.keys())
-        n_drugs = len(next(iter(data.values()))[0])
-        n_individuals = len(next(iter(data.values())))
+    select_high_std_drugs = use_std_drugs
+    select_high_std_individuals = use_std_inds
 
-        # not used for scoring directly, but the code is from your original script
-        sd_drugs = [0] * n_drugs
-        for drug in range(n_drugs):
-            ranks = [
-                data[predictor][ind][drug]
-                for predictor in list(data.keys())[:-1]
-                for ind in individuals_to_filter
-            ]
-            ranks = [rank for rank in ranks if isinstance(rank, (int, float))]
-            sd_drugs[drug] = np.std(ranks)
-
+    def score_predictors(data, n_drugs_to_rank, drug_filter, indiv_filter):
+        predictor_keys = list(data.keys())[:-1]
         predictor_scores = []
-        for predictor in list(data.keys())[:-1]:
-            total_diff = 0
-            for ind in individuals_to_filter:
-                for drug_idx in range(n_drugs_to_rank):
-                    if drug_idx in drugs_to_filter:
-                        total_diff += (
-                            data[predictor][ind][drug_idx]
-                            - data[list(data.keys())[-1]][ind][drug_idx]
-                        ) ** 2
+        for predictor in predictor_keys:
+            total_diff = 0.0
+            for ind in indiv_filter:
+                for drg_idx in drug_filter:
+                    diff = data[predictor][ind][drg_idx] - data["Gold Standard"][ind][drg_idx]
+                    total_diff += diff**2
             predictor_scores.append(total_diff)
+        return normalize_and_invert(predictor_scores)
 
-        return predictor_scores
+    def subset_correlation(i_count, d_count):
+        if select_high_std_drugs:
+            drug_filter = drug_selector(d_count, list_of_stds)
+        else:
+            drug_filter = list(range(d_count))
 
-    def normalize_and_invert(scores):
-        scaler = MinMaxScaler()
-        scores = np.array(scores).reshape(-1, 1)
-        normalized_scores = scaler.fit_transform(scores)
-        inverted_scores = 1 - normalized_scores
-        return inverted_scores.flatten().tolist()
+        if select_high_std_individuals:
+            topi = individual_selector(i_count, individual_stds)
+        else:
+            topi = list(range(i_count))
 
-    # best predictor
-    best_predictor = rank_predictors(data, num_drugs, drugs_to_filter_by, individuals_to_filter_by)
-    best_predictor = normalize_and_invert(best_predictor)
+        sub_scores = score_predictors(data, d_count, drug_filter, topi)
+        sub_ranks = rank_integers(sub_scores)
 
-    # Arbitrary: scores_byD_arbitrary
-    scores_byD_arbitrary = {}
-    for i_d in list(range(1, num_drugs + 1)):
-        raw_scores = rank_predictors(data, i_d, list(range(i_d)), individuals_to_filter_by)
-        scores_byD_arbitrary[f"{i_d}"] = normalize_and_invert(raw_scores)
+        full_drug_filter = list(range(num_drugs))
+        full_indiv_filter = list(range(num_individual))
+        full_scores = score_predictors(data, num_drugs, full_drug_filter, full_indiv_filter)
+        full_ranks = rank_integers(full_scores)
 
-    best_rank_with_noise = rank_integers(scores_byD_arbitrary[f"{num_drugs}"])
-    corrByD_arbitrary = []
-    for value in sorted(scores_byD_arbitrary.keys(), key=int):
-        correlation = abs(pearson_correlation(best_rank_with_noise,
-                                              rank_integers(scores_byD_arbitrary[value])))
-        corrByD_arbitrary.append(correlation)
-        print(f"Correlation by arbitrary drugs {value}: {correlation}")
+        c_ = pearson_correlation(sub_ranks, full_ranks)
+        if i_count == num_individual and d_count == num_drugs:
+            c_ = 1.0
+        return c_
 
-    # Arbitrary: scores_byI_arbitrary
-    scores_byI_arbitrary = {}
-    for i_ct in list(range(1, num_individual + 1)):
-        raw_scores = rank_predictors(data, num_drugs, drugs_to_filter_by, list(range(i_ct)))
-        scores_byI_arbitrary[f"{i_ct}"] = normalize_and_invert(raw_scores)
-
-    best_rank_with_noise = rank_integers(scores_byI_arbitrary[f"{num_individual}"])
-    corrByI_arbitrary = []
-    for value in sorted(scores_byI_arbitrary.keys(), key=int):
-        correlation = abs(pearson_correlation(best_rank_with_noise,
-                                              rank_integers(scores_byI_arbitrary[value])))
-        corrByI_arbitrary.append(correlation)
-        print(f"Correlation by arbitrary individuals {value}: {correlation}")
-
-    # High STD: scores_byD_high_std
-    scores_byD_high_std = {}
-    for i_d in list(range(1, num_drugs + 1)):
-        selected_drugs = drug_selector(i_d, list_of_stds)
-        raw_scores = rank_predictors(data, i_d, selected_drugs, individuals_to_filter_by)
-        scores_byD_high_std[f"{i_d}"] = normalize_and_invert(raw_scores)
-
-    best_rank_with_noise = rank_integers(scores_byD_high_std[f"{num_drugs}"])
-    corrByD_high_std = []
-    for value in sorted(scores_byD_high_std.keys(), key=int):
-        correlation = abs(pearson_correlation(best_rank_with_noise,
-                                              rank_integers(scores_byD_high_std[value])))
-        corrByD_high_std.append(correlation)
-        print(f"Correlation by high std drugs {value}: {correlation}")
-
-    # High STD: scores_byI_high_std
-    if select_high_std_individuals:
-        individual_stds = individual_standardDeviation(data, num_individual, num_predictors, num_drugs)
-    scores_byI_high_std = {}
-    for i_ct in list(range(1, num_individual + 1)):
-        selected_inds = individual_selector(i_ct, individual_stds)
-        raw_scores = rank_predictors(data, num_drugs, drugs_to_filter_by, selected_inds)
-        scores_byI_high_std[f"{i_ct}"] = normalize_and_invert(raw_scores)
-
-    best_rank_with_noise = rank_integers(scores_byI_high_std[f"{num_individual}"])
-    corrByI_high_std = []
-    for value in sorted(scores_byI_high_std.keys(), key=int):
-        correlation = abs(pearson_correlation(best_rank_with_noise,
-                                              rank_integers(scores_byI_high_std[value])))
-        corrByI_high_std.append(correlation)
-        print(f"Correlation by high std individuals {value}: {correlation}")
-
-    # calculate_scores => your older chunk
-    def calculate_scores(i, d, data, num_preds, num_indiv):
-        twoD_data = list(chain(*data.values()))
-        gs = twoD_data[(num_indiv - 1) * num_preds : num_indiv * num_preds]
-        gs_list = [[gs[b][0:d]] for b in range(min(i, len(gs)))]
-        list_of_scores = [0] * (num_preds)
-        for predictor_index in range(num_preds):
-            list_of_scores_temp = []
-            for individual_index in range(i):
-                list_index = individual_index + predictor_index * num_indiv
-                if list_index < len(twoD_data):
-                    m = twoD_data[list_index][0:d]
-                    if individual_index < len(gs_list):
-                        min_len = min(len(m), len(gs_list[individual_index][0]))
-                        score = sum(
-                            (elem - gs_list[individual_index][0][idx]) ** 2
-                            for idx, elem in enumerate(m[:min_len])
-                        )
-                        list_of_scores_temp.append(score)
-            list_of_scores[predictor_index] = sum(list_of_scores_temp)
-        return list_of_scores
-
-    def bestSubsetI(i, d, data, num_preds, num_indiv, num_drugs):
-        data_subset = data
-        # top d drugs by STD, top i individuals by STD
-        drug_sel = drug_selector(d, list_of_stds)
-        ind_sel = individual_selector(i, individual_stds)
-
-        list_of_scores = calculate_scores(i, d, data_subset, num_preds, num_indiv)
-        unique_scores = set()
-        for idx, sc in enumerate(list_of_scores):
-            while sc in unique_scores:
-                sc += 1e-10
-            unique_scores.add(sc)
-            list_of_scores[idx] = sc
-        sorted_scores = sorted(list_of_scores)
-        rank_map = {val: idx+1 for idx,val in enumerate(sorted_scores)}
-        ranked_scores = [rank_map[sc] for sc in list_of_scores]
-
-        full_scores = calculate_scores(num_indiv, num_drugs, data_subset, num_preds, num_indiv)
-        sorted_full_scores = sorted(full_scores)
-        rank_full_map = {val: idx+1 for idx,val in enumerate(sorted_full_scores)}
-        ranked_full_scores = [rank_full_map[s] for s in full_scores]
-        return ranked_scores, ranked_full_scores
-
+    best_subsetDict = {}
     drugs_used_dict = {}
     individuals_used_dict = {}
-    best_subsetDict = {}
-    num_preds = num_predictors
 
-    # fill best_subsetDict => i=1..N, d=1..N
-    if data is None:
-        # same logic as your script
-        cIn, cDr = 1, 1
-        while cIn <= num_individual:
-            cDr = 1
-            while cDr <= num_drugs:
-                sub_ranks, full_ranks = bestSubsetI(cIn, cDr, data, num_preds, num_individual, num_drugs)
-                best_subsetDict[f"i{cIn}d{cDr}"] = abs(pearson_correlation(sub_ranks, full_ranks))
-                drugs_used_dict[cDr] = drug_selector(cDr, list_of_stds)
-                individuals_used_dict[cIn] = individual_selector(cIn, individual_stds)
-                cDr += 1
-            cIn += 1
-    else:
-        data_with_noise = data
-        cIn, cDr = 1, 1
-        while cIn <= num_individual:
-            cDr = 1
-            while cDr <= num_drugs:
-                sub_ranks, full_ranks = bestSubsetI(
-                    cIn, cDr, data_with_noise, num_preds, num_individual, num_drugs
-                )
-                best_subsetDict[f"i{cIn}d{cDr}"] = abs(pearson_correlation(sub_ranks, full_ranks))
-                drugs_used_dict[cDr] = drug_selector(cDr, list_of_stds)
-                individuals_used_dict[cIn] = individual_selector(cIn, individual_stds)
-                cDr += 1
-            cIn += 1
+    for i_ in range(1, num_individual+1):
+        for d_ in range(1, num_drugs+1):
+            cval = subset_correlation(i_, d_)
+            best_subsetDict[f"i{i_}d{d_}"] = cval
+
+            if select_high_std_drugs:
+                drugs_used_dict[d_] = drug_selector(d_, list_of_stds)
+            else:
+                drugs_used_dict[d_] = list(range(d_))
+
+            if select_high_std_individuals:
+                individuals_used_dict[i_] = individual_selector(i_, individual_stds)
+            else:
+                individuals_used_dict[i_] = list(range(i_))
+
+    # For the 6-axis plots, we compare partial ranks vs. full ranks:
+    scores_byD_arbitrary = {}
+    corrByD_arbitrary = []
+    full_scores_forD = score_predictors(data, num_drugs, list(range(num_drugs)), list(range(num_individual)))
+    full_ranks_forD = rank_integers(full_scores_forD)
+
+    for i_d in range(1, num_drugs+1):
+        sub_drug_filter = list(range(i_d))
+        sub_inds = list(range(num_individual))
+        sub_scores = score_predictors(data, i_d, sub_drug_filter, sub_inds)
+        scores_byD_arbitrary[str(i_d)] = sub_scores
+
+    for i_d in range(1, num_drugs+1):
+        sub_ranks_ = rank_integers(scores_byD_arbitrary[str(i_d)])
+        c_ = abs(pearson_correlation(sub_ranks_, full_ranks_forD))
+        corrByD_arbitrary.append(c_)
+
+    scores_byI_arbitrary = {}
+    corrByI_arbitrary = []
+    full_scores_forI = score_predictors(data, num_drugs, list(range(num_drugs)), list(range(num_individual)))
+    full_ranks_forI = rank_integers(full_scores_forI)
+    for i_ct in range(1, num_individual+1):
+        sub_inds = list(range(i_ct))
+        sub_drugs = list(range(num_drugs))
+        sub_scores = score_predictors(data, num_drugs, sub_drugs, sub_inds)
+        scores_byI_arbitrary[str(i_ct)] = sub_scores
+    for i_ct in range(1, num_individual+1):
+        sub_ranks_ = rank_integers(scores_byI_arbitrary[str(i_ct)])
+        c_ = abs(pearson_correlation(sub_ranks_, full_ranks_forI))
+        corrByI_arbitrary.append(c_)
+
+    scores_byD_high_std = {}
+    corrByD_high_std = []
+    full_scoresD = score_predictors(data, num_drugs, list(range(num_drugs)), list(range(num_individual)))
+    full_ranksD = rank_integers(full_scoresD)
+    for i_d in range(1, num_drugs+1):
+        topd = drug_selector(i_d, list_of_stds)
+        sub_scores = score_predictors(data, i_d, topd, list(range(num_individual)))
+        scores_byD_high_std[str(i_d)] = sub_scores
+    for i_d in range(1, num_drugs+1):
+        sub_ranks_ = rank_integers(scores_byD_high_std[str(i_d)])
+        c_ = abs(pearson_correlation(sub_ranks_, full_ranksD))
+        corrByD_high_std.append(c_)
+
+    scores_byI_high_std = {}
+    corrByI_high_std = []
+    full_scoresI2 = score_predictors(data, num_drugs, list(range(num_drugs)), list(range(num_individual)))
+    full_ranksI2 = rank_integers(full_scoresI2)
+    for i_ct in range(1, num_individual+1):
+        if select_high_std_individuals:
+            topi = individual_selector(i_ct, individual_stds)
+        else:
+            topi = list(range(i_ct))
+        sub_scores = score_predictors(data, num_drugs, list(range(num_drugs)), topi)
+        scores_byI_high_std[str(i_ct)] = sub_scores
+    for i_ct in range(1, num_individual+1):
+        sub_ranks_ = rank_integers(scores_byI_high_std[str(i_ct)])
+        c_ = abs(pearson_correlation(sub_ranks_, full_ranksI2))
+        corrByI_high_std.append(c_)
+
+    best_predictor_scores = score_predictors(data, num_drugs, list(range(num_drugs)), list(range(num_individual)))
 
     results = (
         best_subsetDict,
@@ -474,7 +598,7 @@ def run_project(num_individual, num_drugs, num_predictors, corr, distance, data,
         scores_byI_arbitrary,
         corrByD_arbitrary,
         corrByI_arbitrary,
-        best_predictor,
+        best_predictor_scores,
         list_of_stds,
         individual_stds,
         scores_byD_high_std,
@@ -482,12 +606,10 @@ def run_project(num_individual, num_drugs, num_predictors, corr, distance, data,
         scores_byI_high_std,
         corrByI_high_std
     )
-    print(f"Results tuple has {len(results)} elements: {results}")
     return results, drugs_used_dict, individuals_used_dict
 
-
 ###############################################################################
-# run_multiple_simulations (CORE LOGIC - UNCHANGED)
+# run_multiple_simulations
 ###############################################################################
 def run_multiple_simulations(num_individual, num_drugs, num_predictors, corr, distance, data, num_iterations):
     all_best_predictor_scores = []
@@ -504,7 +626,9 @@ def run_multiple_simulations(num_individual, num_drugs, num_predictors, corr, di
     global data_dict_global, scores_byD_high_std_global, scores_byI_high_std_global, min_corr_global
     global drugs_used_dict_global, individuals_used_dict_global
 
-    for _ in range(num_iterations):
+    for iteration_idx in range(num_iterations):
+        print(f"\n--- Simulation iteration {iteration_idx+1} of {num_iterations} ---")
+
         results, d_used, i_used = run_project(
             num_individual, num_drugs, num_predictors, corr,
             distance, data, True, True
@@ -515,7 +639,7 @@ def run_multiple_simulations(num_individual, num_drugs, num_predictors, corr, di
             scores_byI_arbitrary,
             corrByD_arbitrary,
             corrByI_arbitrary,
-            best_predictor,
+            best_predictor_scores,
             list_of_stds,
             individual_stds,
             scores_byD_high_std,
@@ -524,11 +648,10 @@ def run_multiple_simulations(num_individual, num_drugs, num_predictors, corr, di
             corrByI_high_std
         ) = results
 
-        # store usage
         drugs_used_dict_global = d_used
         individuals_used_dict_global = i_used
 
-        all_best_predictor_scores.append(best_predictor)
+        all_best_predictor_scores.append(best_predictor_scores)
         all_scores_byD_arbitrary.append(scores_byD_arbitrary)
         all_corrByD_arbitrary.append(corrByD_arbitrary)
         all_scores_byI_arbitrary.append(scores_byI_arbitrary)
@@ -541,7 +664,6 @@ def run_multiple_simulations(num_individual, num_drugs, num_predictors, corr, di
 
     averaged_best_predictor_scores = np.mean(all_best_predictor_scores, axis=0).tolist()
 
-    # average dicts
     def average_dicts(dicts):
         from itertools import chain
         all_keys = set(chain.from_iterable(d.keys() for d in dicts))
@@ -550,7 +672,10 @@ def run_multiple_simulations(num_individual, num_drugs, num_predictors, corr, di
             matching = [d[key] for d in dicts if key in d]
             if matching:
                 arr = np.array(matching, dtype=float)
-                mean_val = np.mean(arr, axis=0).tolist()
+                if arr.ndim > 1:
+                    mean_val = np.mean(arr, axis=0).tolist()
+                else:
+                    mean_val = float(np.mean(arr))
                 avg_dict[key] = mean_val
             else:
                 avg_dict[key] = []
@@ -566,7 +691,6 @@ def run_multiple_simulations(num_individual, num_drugs, num_predictors, corr, di
     averaged_corrByI_high_std = np.mean(all_corrByI_high_std, axis=0).tolist()
     averaged_best_subsetDict = average_dicts(all_best_subsetDict)
 
-    # plots
     plot_combined_scores(all_best_predictor_scores, averaged_best_predictor_scores)
     plot_combined_graphs(
         averaged_scores_byD_arbitrary, averaged_corrByD_arbitrary,
@@ -582,14 +706,12 @@ def run_multiple_simulations(num_individual, num_drugs, num_predictors, corr, di
     scores_byI_high_std_global = averaged_scores_byI_high_std
     min_corr_global = corr
 
-
 ###############################################################################
-# PLOTTING (CORE + Additional)
+# PLOTTING
 ###############################################################################
 def plot_combined_scores(all_best_predictor_scores, averaged_best_predictor_scores):
     fig, axs = plt.subplots(2, 1, figsize=(18, 14))
 
-    # top: bar
     ax1 = axs[0]
     avg_scores = averaged_best_predictor_scores
     ax1.bar(range(len(avg_scores)), avg_scores, color=sns.color_palette("Set2", len(avg_scores)))
@@ -599,7 +721,6 @@ def plot_combined_scores(all_best_predictor_scores, averaged_best_predictor_scor
     ax1.set_xticks(range(len(avg_scores)))
     ax1.set_xticklabels([f"P{i + 1}" for i in range(len(avg_scores))], fontsize=16)
 
-    # bottom: boxplot
     ax2 = axs[1]
     data_box = []
     if all_best_predictor_scores:
@@ -616,7 +737,8 @@ def plot_combined_scores(all_best_predictor_scores, averaged_best_predictor_scor
             patch.set_linewidth(2)
             for elem in ['whiskers', 'caps', 'medians', 'means']:
                 plt.setp(box[elem][2*i:2*(i+1)], color=palette[i], linewidth=2)
-            plt.setp(box['fliers'][i], markerfacecolor=palette[i], markeredgecolor=palette[i])
+            if i < len(box['fliers']):
+                plt.setp(box['fliers'][i], markerfacecolor=palette[i], markeredgecolor=palette[i])
 
         for i in range(num_preds):
             yvals = data_box[i]
@@ -654,7 +776,6 @@ def plot_combined_graphs(scores_byD_arbitrary, corrByD_arbitrary,
                 for i_idx, sc in enumerate(normalized_scores):
                     data.append([int(num), f"P{i_idx+1}", sc])
         else:
-            # fallback if it was a list
             for i_idx, scores_item in enumerate(scores_by):
                 total_score = sum(scores_item)
                 if total_score == 0:
@@ -680,7 +801,7 @@ def plot_combined_graphs(scores_byD_arbitrary, corrByD_arbitrary,
             bottom += pivot_df[col]
 
         max_ticks = 20
-        step_ = max(1, len(pivot_df.index)//max_ticks) if len(pivot_df.index)>0 else 1
+        step_ = max(1, len(pivot_df.index)//max_ticks) if len(pivot_df.index) > 0 else 1
         ax.set_xticks(pivot_df.index[::step_])
         ax.set_xticklabels(pivot_df.index[::step_], fontsize=12, rotation=90)
 
@@ -689,17 +810,12 @@ def plot_combined_graphs(scores_byD_arbitrary, corrByD_arbitrary,
         ax.set_ylabel("Normalized Score", fontsize=16, fontweight='bold')
         ax.tick_params(axis='both', which='major', labelsize=14)
 
-    # row0 col0 => arbitrary drugs
     plot_combined(axs[0,0], scores_byD_arbitrary, corrByD_arbitrary, "Drugs",
                   "Scores and Correlation (Arbitrary Drugs)")
-    # row1 col0 => high std drugs
-    plot_combined(axs[1,0], scores_byD_high_std, corrByD_high_std, "Drugs",
-                  "Scores and Correlation (High Std Drugs)")
-
-    # row0 col1 => arbitrary individuals
     plot_combined(axs[0,1], scores_byI_arbitrary, corrByI_arbitrary, "Individuals",
                   "Scores and Correlation (Arbitrary Individuals)")
-    # row1 col1 => high std individuals
+    plot_combined(axs[1,0], scores_byD_high_std, corrByD_high_std, "Drugs",
+                  "Scores and Correlation (High Std Drugs)")
     plot_combined(axs[1,1], scores_byI_high_std, corrByI_high_std, "Individuals",
                   "Scores and Correlation (High Std Individuals)")
 
@@ -709,7 +825,6 @@ def plot_combined_graphs(scores_byD_arbitrary, corrByD_arbitrary,
 
         min_arbitrary = np.nanmin(arrA) if np.isnan(arrA).any() else arrA.min()
         min_highstd = np.nanmin(arrH) if np.isnan(arrH).any() else arrH.min()
-
         arrA = np.where(np.isnan(arrA), min_arbitrary, arrA)
         arrH = np.where(np.isnan(arrH), min_highstd, arrH)
 
@@ -718,7 +833,7 @@ def plot_combined_graphs(scores_byD_arbitrary, corrByD_arbitrary,
 
         y_min = min(arrA.min(), arrH.min())
         y_max = max(arrA.max(), arrH.max())
-        ax.set_ylim(y_min-0.1, y_max+0.1)
+        ax.set_ylim(y_min - 0.1, y_max + 0.1)
         ax.set_title(title, fontsize=20, fontweight='bold')
         ax.set_xlabel(xlabel, fontsize=16, fontweight='bold')
         ax.set_ylabel("Correlation", fontsize=16, fontweight='bold')
@@ -726,22 +841,20 @@ def plot_combined_graphs(scores_byD_arbitrary, corrByD_arbitrary,
         ax.grid(True)
         ax.legend()
 
-    # row2 => correlation lines
     x_drugs = list(range(1, len(corrByD_arbitrary)+1))
     plot_trendline(axs[2,0], x_drugs, corrByD_arbitrary, corrByD_high_std,
-                   "Arbitrary vs High Std Selection of Drugs", "Number of Drugs")
+                   "Arbitrary vs High Std (Drugs)", "Number of Drugs")
 
     x_inds = list(range(1, len(corrByI_arbitrary)+1))
     plot_trendline(axs[2,1], x_inds, corrByI_arbitrary, corrByI_high_std,
-                   "Arbitrary vs High Std Selection of Individuals", "Number of Individuals")
+                   "Arbitrary vs High Std (Individuals)", "Number of Individuals")
 
     handles, labels = axs[0,0].get_legend_handles_labels()
     fig.legend(handles, labels, loc='lower center', ncol=min(14, len(handles)), fontsize=14)
     plt.tight_layout(rect=[0,0.05,1,0.95])
     plt.show()
 
-    # separate figure => STD barplots
-    fig2, axs2 = plt.subplots(2,1, figsize=(18,14))
+    fig2, axs2 = plt.subplots(2, 1, figsize=(18,14))
 
     def plot_std_barplot(ax, data, title, xlabel, color):
         ax.bar(range(len(data)), data, color=color)
@@ -758,9 +871,6 @@ def plot_combined_graphs(scores_byD_arbitrary, corrByD_arbitrary,
     plt.show()
 
 def plot_static_heatmap(data_dict, title, min_corr):
-    """
-    Create a static heatmap highlighting subsets >= min_corr
-    """
     subset_labels = list(data_dict.keys())
     subset_values = list(data_dict.values())
 
@@ -777,15 +887,16 @@ def plot_static_heatmap(data_dict, title, min_corr):
     fig_height = min(20, len(y_labels)/2)
     plt.figure(figsize=(fig_width, fig_height))
 
+    # Use a more contrasting color map for correlation
     ax = sns.heatmap(
-        heatmap_data, cmap='Blues', cbar=False, square=True,
+        heatmap_data, cmap='RdYlBu', cbar=False, square=True,
         xticklabels=x_labels, yticklabels=y_labels
     )
 
     max_xticks = 20
     max_yticks = 20
-    x_tick_step = max(1, len(x_labels)//max_xticks) if len(x_labels)>0 else 1
-    y_tick_step = max(1, len(y_labels)//max_yticks) if len(y_labels)>0 else 1
+    x_tick_step = max(1, len(x_labels)//max_xticks) if len(x_labels) > 0 else 1
+    y_tick_step = max(1, len(y_labels)//max_yticks) if len(y_labels) > 0 else 1
     ax.set_xticks(range(0, len(x_labels), x_tick_step))
     ax.set_xticklabels([x_labels[i] for i in range(0, len(x_labels), x_tick_step)], fontsize=8, rotation=90)
     ax.set_yticks(range(0, len(y_labels), y_tick_step))
@@ -796,12 +907,18 @@ def plot_static_heatmap(data_dict, title, min_corr):
             val = heatmap_data[row_, col_]
             if val >= min_corr:
                 ax.add_patch(
-                    plt.Rectangle((col_, row_),1,1, fill=False, edgecolor='white', linewidth=2)
+                    plt.Rectangle((col_, row_), 1, 1, fill=False, edgecolor='white', linewidth=2)
                 )
                 ax.text(
                     col_+0.5, row_+0.5, f"{val:.2f}",
                     ha='center', va='center', color='white',
                     fontsize=7, fontweight='bold'
+                )
+            else:
+                ax.text(
+                    col_+0.5, row_+0.5, f"{val:.2f}",
+                    ha='center', va='center', color='black',
+                    fontsize=7
                 )
 
     plt.xlabel('Individuals', fontsize=18, fontweight='bold')
@@ -816,8 +933,8 @@ def plot_static_heatmap(data_dict, title, min_corr):
 ###############################################################################
 def plot_cost_effectiveness_heatmap(data_dict, min_corr):
     """
-    cost_effective(%) = (corr/(X + Y))*100 if corr >= min_corr else 0
-    highlight top5, annotate if corr>=0.7
+    Only show text for cells where correlation >= min_corr.
+    Otherwise, the cell is displayed as 0 with no annotation.
     """
     subset_labels = list(data_dict.keys())
     x_values = sorted(list(set(int(lbl.split('i')[1].split('d')[0]) for lbl in subset_labels)))
@@ -830,13 +947,15 @@ def plot_cost_effectiveness_heatmap(data_dict, min_corr):
         d_val = int(lbl.split('d')[1])
         xx = x_values.index(i_val)
         yy = y_values.index(d_val)
+        corr_matrix[yy, xx] = corr_val
+
+        # If correlation >= min_corr, compute cost; else 0
         if corr_val >= min_corr:
             cost_matrix[yy, xx] = (corr_val/(i_val + d_val))*100
         else:
             cost_matrix[yy, xx] = 0
-        corr_matrix[yy, xx] = corr_val
 
-    vmax = cost_matrix.max()*1.05 if cost_matrix.max()>0 else 1
+    vmax = cost_matrix.max()*1.05 if cost_matrix.max() > 0 else 1
     fig, ax = plt.subplots(figsize=(8, 6))
     im = ax.imshow(cost_matrix, cmap="YlOrRd", vmin=0, vmax=vmax, aspect='auto')
 
@@ -856,16 +975,20 @@ def plot_cost_effectiveness_heatmap(data_dict, min_corr):
     sorted_ = sorted(coords_list, key=lambda idx: cost_matrix[idx[0], idx[1]], reverse=True)
     top5 = sorted_[:5]
     for (r_, c_) in top5:
-        rect = plt.Rectangle((c_-0.5, r_-0.5),1,1, fill=False, edgecolor="black", linewidth=3)
+        rect = plt.Rectangle((c_-0.5, r_-0.5), 1, 1, fill=False, edgecolor="black", linewidth=3)
         ax.add_patch(rect)
 
-    # annotate if corr>=0.7
+    # Annotate only if correlation >= min_corr
     for rr in range(cost_matrix.shape[0]):
         for cc in range(cost_matrix.shape[1]):
-            if corr_matrix[rr, cc]>=0.7:
-                ax.text(cc, rr, f"{cost_matrix[rr, cc]:.1f}",
+            if corr_matrix[rr, cc] >= min_corr:
+                val = cost_matrix[rr, cc]
+                ax.text(cc, rr, f"{val:.1f}",
                         ha='center', va='center', color="black",
                         fontsize=8, fontweight='bold')
+            else:
+                # correlation < min_corr => cost=0 => no text
+                pass
 
     ax.invert_yaxis()
     plt.tight_layout()
@@ -921,41 +1044,52 @@ def log_top_cost_subsets(data_dict, min_corr, drugs_used_dict, individuals_used_
 
 def plot_zoomed_in_correlation_heatmap(data_dict, min_corr, topN=10):
     print("Plotting zoomed-in correlation heatmap for top subsets by correlation...")
-    arr = []
-    for k,v in data_dict.items():
-        i_ = int(k.split('i')[1].split('d')[0])
-        d_ = int(k.split('d')[1])
-        if v >= min_corr:
-            arr.append((i_, d_, v))
-    arr.sort(key=lambda x: (x[1], x[0]))
-    top = arr[:topN]
-    if not top:
+    subset_labels = list(data_dict.keys())
+    if not subset_labels:
+        print("No data available to zoom in on.")
+        return
+
+    x_values = sorted(list(set(int(lbl.split('i')[1].split('d')[0]) for lbl in subset_labels)))
+    y_values = sorted(list(set(int(lbl.split('d')[1]) for lbl in subset_labels)))
+    corr_matrix = np.zeros((len(y_values), len(x_values)))
+    for lbl, val in data_dict.items():
+        i_ = int(lbl.split('i')[1].split('d')[0])
+        d_ = int(lbl.split('d')[1])
+        corr_matrix[d_-1, i_-1] = val
+
+    # Find the first cell that meets min_corr
+    found_idx = None
+    for row in range(corr_matrix.shape[0]):
+        for col in range(corr_matrix.shape[1]):
+            if corr_matrix[row, col] >= min_corr:
+                found_idx = (row, col)
+                break
+        if found_idx:
+            break
+
+    if not found_idx:
         print(f"No subsets found with correlation >= {min_corr}.")
         return
 
-    min_i = min(x[0] for x in top)
-    max_i = max(x[0] for x in top)
-    min_d = min(x[1] for x in top)
-    max_d = max(x[1] for x in top)
-    h = max_d - min_d +1
-    w = max_i - min_i +1
-    sub_mat = np.zeros((h,w))
-    for (iv,dv,corr_) in top:
-        row = dv-min_d
-        col = iv-min_i
-        sub_mat[row, col] = corr_
+    center_d, center_i = found_idx
+    half_win = 10
+    start_d = max(center_d - half_win, 0)
+    end_d = min(start_d + 20, corr_matrix.shape[0])
+    start_i = max(center_i - half_win, 0)
+    end_i = min(start_i + 20, corr_matrix.shape[1])
+    zoomed_data = corr_matrix[start_d:end_d, start_i:end_i]
 
     fig, ax = plt.subplots(figsize=(8,6), dpi=300)
     sns.heatmap(
-        sub_mat, cmap='Blues', vmin=0, vmax=1, cbar=True,
+        zoomed_data, cmap='RdYlBu', vmin=0, vmax=1, cbar=True,
         square=True, annot=True, fmt=".2f",
-        xticklabels=range(min_i, max_i+1),
-        yticklabels=range(min_d, max_d+1),
+        xticklabels=[x_values[x] for x in range(start_i, end_i)],
+        yticklabels=[y_values[y] for y in range(start_d, end_d)],
         ax=ax
     )
     ax.set_xlabel("Number of Individuals", fontsize=12)
     ax.set_ylabel("Number of Drugs", fontsize=12)
-    ax.set_title("Zoomed Correlation (Top Subsets)", fontsize=14)
+    ax.set_title("Zoomed Correlation (20x20 Window)", fontsize=14)
     ax.invert_yaxis()
     plt.tight_layout()
     plt.show()
@@ -970,26 +1104,32 @@ def plot_zoomed_in_cost_heatmap(data_dict, min_corr, topN=10):
             cost = (v/(i_+d_))*100
             arr.append((i_, d_, v, cost))
     arr.sort(key=lambda x: x[3], reverse=True)
-    top = arr[:topN]
-    if not top:
+    if not arr:
         print(f"No subsets found for cost-effectiveness >= {min_corr}.")
         return
+    top = arr[:topN]
 
-    min_i = min(x[0] for x in top)
-    max_i = max(x[0] for x in top)
-    min_d = min(x[1] for x in top)
-    max_d = max(x[1] for x in top)
-    h = max_d - min_d +1
-    w = max_i - min_i +1
+    x_values = sorted(list(set(x[0] for x in top)))
+    y_values = sorted(list(set(x[1] for x in top)))
+    if not x_values or not y_values:
+        print("No valid subsets to zoom in on.")
+        return
+
+    min_i = min(x_values)
+    max_i = max(x_values)
+    min_d = min(y_values)
+    max_d = max(y_values)
+    h = max_d - min_d + 1
+    w = max_i - min_i + 1
     sub_mat = np.zeros((h,w))
 
     for (iv, dv, corr_, cost_) in top:
-        row = dv-min_d
-        col = iv-min_i
+        row = dv - min_d
+        col = iv - min_i
         sub_mat[row, col] = cost_
 
     fig, ax = plt.subplots(figsize=(8,6), dpi=300)
-    vmax = sub_mat.max() if sub_mat.max()>0 else 1
+    vmax = sub_mat.max() if sub_mat.max() > 0 else 1
     sns.heatmap(
         sub_mat, cmap='YlOrRd', vmin=0, vmax=vmax, cbar=True,
         square=True, annot=True, fmt=".2f",
@@ -1005,21 +1145,14 @@ def plot_zoomed_in_cost_heatmap(data_dict, min_corr, topN=10):
     plt.show()
 
 ###############################################################################
-# DASH APP: Side-by-side Correlation & Cost sub-heatmaps
+# DASH APP
 ###############################################################################
 def run_dash_app(port=8060):
-    """
-    Build a 10x10 window around the best correlation cell in data_dict_global:
-      Left: correlation sub-heatmap
-      Right: cost sub-heatmap
-    Then run on port=8060.
-    """
     subset_labels = list(data_dict_global.keys())
     if not subset_labels:
         print("No data available for the Dash app. (data_dict_global is empty.)")
         return
 
-    # find max i, d
     max_i = 0
     max_d = 0
     for lbl in subset_labels:
@@ -1028,57 +1161,50 @@ def run_dash_app(port=8060):
         max_i = max(max_i, i_val)
         max_d = max(max_d, d_val)
 
-    # Build correlation matrix
     corr_matrix_full = np.zeros((max_d, max_i))
     for lbl, val in data_dict_global.items():
         i_val = int(lbl.split('i')[1].split('d')[0])
         d_val = int(lbl.split('d')[1])
         corr_matrix_full[d_val - 1, i_val - 1] = val
 
-    # best subset by correlation
-    best_key = max(data_dict_global, key=data_dict_global.get)
-    best_i = int(best_key.split('i')[1].split('d')[0])
-    best_d = int(best_key.split('d')[1])
+    # find the first cell >= min_corr_global
+    found_idx = None
+    for row in range(corr_matrix_full.shape[0]):
+        for col in range(corr_matrix_full.shape[1]):
+            if corr_matrix_full[row, col] >= min_corr_global:
+                found_idx = (row, col)
+                break
+        if found_idx:
+            break
 
-    window_size = 10
+    if not found_idx:
+        print(f"No subsets found with correlation >= {min_corr_global} for Dash app.")
+        return
 
-    # figure out submatrix bounds for i
-    start_i = best_i - window_size//2
-    end_i = start_i + window_size
-    if start_i < 1:
-        start_i = 1
-        end_i = start_i + window_size
-    if end_i > max_i:
-        end_i = max_i
-        start_i = max(end_i - window_size + 1, 1)
+    center_d, center_i = found_idx
+    window_size = 20
+    half_win = 10
+    start_d = max(center_d - half_win, 0)
+    end_d = min(start_d + window_size, corr_matrix_full.shape[0])
+    start_i = max(center_i - half_win, 0)
+    end_i = min(start_i + window_size, corr_matrix_full.shape[1])
 
-    # figure out submatrix bounds for d
-    start_d = best_d - window_size//2
-    end_d = start_d + window_size
-    if start_d < 1:
-        start_d = 1
-        end_d = start_d + window_size
-    if end_d > max_d:
-        end_d = max_d
-        start_d = max(end_d - window_size + 1, 1)
-
-    # slice submat
-    corr_sub = corr_matrix_full[start_d-1:end_d-1, start_i-1:end_i-1]
+    corr_sub = corr_matrix_full[start_d:end_d, start_i:end_i]
     cost_sub = np.zeros_like(corr_sub)
-    for row in range(corr_sub.shape[0]):
-        for col in range(corr_sub.shape[1]):
-            d_idx = start_d + row
-            i_idx = start_i + col
-            cval = corr_matrix_full[d_idx - 1, i_idx - 1]
-            if cval >= min_corr_global:
-                cost_val = (cval/(i_idx + d_idx))*100.0
+    for r in range(corr_sub.shape[0]):
+        for c in range(corr_sub.shape[1]):
+            d_idx = start_d + r
+            i_idx = start_i + c
+            cval = corr_matrix_full[d_idx, i_idx]
+            # Only compute cost if correlation >= min_corr_global
+            if cval >= min_corr_global and ((i_idx+1) + (d_idx+1)) != 0:
+                cost_val = (cval / ((i_idx+1) + (d_idx+1))) * 100.0
             else:
                 cost_val = 0.0
-            cost_sub[row, col] = cost_val
+            cost_sub[r, c] = cost_val
 
-    # build x,y labels for dash
-    x_labels = [str(i) for i in range(start_i, end_i)]
-    y_labels = [str(d) for d in range(start_d, end_d)]
+    x_labels = [str(i) for i in range(start_i+1, end_i+1)]
+    y_labels = [str(d) for d in range(start_d+1, end_d+1)]
     sub_height = corr_sub.shape[0]
     sub_width = corr_sub.shape[1]
 
@@ -1104,14 +1230,14 @@ def run_dash_app(port=8060):
         z=corr_sub,
         x=list(range(sub_width)),
         y=list(range(sub_height)),
-        colorscale='Blues',
+        colorscale='RdYlBu',
         showscale=True,
         zmin=zmin_corr,
         zmax=zmax_corr,
         colorbar=dict(title="Correlation")
     )
     layout_corr = go.Layout(
-        title="Correlation Heatmap (10x10 Window)",
+        title="Correlation Heatmap (20x20 Window)",
         annotations=annotations_corr,
         xaxis=dict(
             title='Number of Individuals',
@@ -1133,21 +1259,34 @@ def run_dash_app(port=8060):
     # cost figure
     annotations_cost = []
     zmin_cost = cost_sub.min()
-    zmax_cost = cost_sub.max() if cost_sub.max()>0 else 1
+    zmax_cost = cost_sub.max()
+    if zmax_cost <= 0:
+        zmax_cost = 1
+    # Python 3.8+ assignment expression
+    if zmax_cost == True:  # means cost_sub.max() was > 0
+        zmax_cost = cost_sub.max()
+    else:
+        zmax_cost = 1
+
     for r_ in range(sub_height):
         for c_ in range(sub_width):
             val = cost_sub[r_, c_]
             corr_val = corr_sub[r_, c_]
-            text_color = "white" if corr_val >= min_corr_global else "black"
-            annotations_cost.append(dict(
-                text=f"{val:.2f}",
-                x=c_,
-                y=r_,
-                xref='x1',
-                yref='y1',
-                showarrow=False,
-                font=dict(color=text_color, size=10)
-            ))
+            # Only annotate if corr_val >= min_corr_global
+            if corr_val >= min_corr_global:
+                text_color = "white" if corr_val >= min_corr_global else "black"
+                annotations_cost.append(dict(
+                    text=f"{val:.2f}",
+                    x=c_,
+                    y=r_,
+                    xref='x1',
+                    yref='y1',
+                    showarrow=False,
+                    font=dict(color=text_color, size=10)
+                ))
+            else:
+                # no annotation
+                pass
 
     heatmap_cost = go.Heatmap(
         z=cost_sub,
@@ -1160,7 +1299,7 @@ def run_dash_app(port=8060):
         colorbar=dict(title="Cost-Effectiveness")
     )
     layout_cost = go.Layout(
-        title="Cost-Effectiveness Heatmap (10x10 Window)",
+        title="Cost-Effectiveness Heatmap (20x20 Window)",
         annotations=annotations_cost,
         xaxis=dict(
             title='Number of Individuals',
@@ -1208,8 +1347,8 @@ def run_dash_app(port=8060):
         x_sub = int(pt['x'])
         y_sub = int(pt['y'])
 
-        i_val = start_i + x_sub
-        d_val = start_d + y_sub
+        i_val = start_i + x_sub + 1
+        d_val = start_d + y_sub + 1
         corr_val = corr_matrix_full[d_val - 1, i_val - 1]
 
         used_drugs = drugs_used_dict_global.get(d_val, [])
@@ -1234,12 +1373,12 @@ def run_dash_app(port=8060):
         x_sub = int(pt['x'])
         y_sub = int(pt['y'])
 
-        i_val = start_i + x_sub
-        d_val = start_d + y_sub
+        i_val = start_i + x_sub + 1
+        d_val = start_d + y_sub + 1
         corr_val = corr_matrix_full[d_val - 1, i_val - 1]
         cost_val = 0.0
-        if corr_val >= min_corr_global:
-            cost_val = (corr_val/(i_val + d_val))*100.0
+        if corr_val >= min_corr_global and (i_val + d_val) != 0:
+            cost_val = (corr_val / (i_val + d_val)) * 100.0
 
         used_drugs = drugs_used_dict_global.get(d_val, [])
         used_inds = individuals_used_dict_global.get(i_val, [])
