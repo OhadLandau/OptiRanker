@@ -136,7 +136,7 @@ Below are sample outputs from OptiRanker. Click any image for full resolution:
 ### **Reference**
 See full work:  
 **OptiRanker: An Open-Access Tool for Optimization of In Vivo Trials and Ranking of Drug Prioritization Algorithms**  
-Ohad Landau, Kartheeswaran Thangathurai, Shai Magidi, Eitan Rubin
+Ohad Landau, Kartheeswaran Thangathurai, Shai Magidi, Angel Porgador, Eitan Rubin
 
 ---
 
