@@ -1,19 +1,3 @@
-# =============================================================================
-# version 1.9  –  user-selectable β  +  PB-MSE scoring  +  Spearman everywhere
-# ---------------------------------------------------------------------------
-# * Adds a prompt so the user can choose the β position-bias coefficient
-#   (default 50 – smaller β → milder penalties; larger β → harsher).
-# * Removes the unused “distance” prompt.
-# * Restores white-border highlights on heat-map cells with ρ ≥ threshold.
-# * Everything else is identical to v1.8.
-#
-# v1.9-pubmods (minimal changes requested):
-#   • Added save_png(fig, filename) that saves 600-dpi PNGs in ./Publication Images/
-#   • Each plotting function calls save_png(...) before returning.
-#   • normalize_and_invert() now clips to avoid 0/1 extremes after MinMax scaling.
-#   • No other logic or visuals changed.
-# =============================================================================
-
 import warnings
 warnings.filterwarnings("ignore", message="Degrees of freedom <= 0 for slice",
                         category=RuntimeWarning)
@@ -1145,3 +1129,4 @@ def run_dash_app(port=8060):
 ###############################################################################
 if __name__ == "__main__":
     main()
+
