@@ -135,7 +135,7 @@ Below are sample outputs from OptiRanker. Click any image for full resolution:
 
 ### **Reference**
 See full work:  
-**OptiRanker: An Advanced Tool for Simulation and Comparative Analysis of Drug Prioritization Algorithms in In Vivo Trials**  
+**OptiRanker: An Open-Access Tool for Optimization of In Vivo Trials and Ranking of Drug Prioritization Algorithms**  
 Ohad Landau, Kartheeswaran Thangathurai, Shai Magidi, Eitan Rubin
 
 ---
