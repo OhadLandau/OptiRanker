@@ -124,11 +124,11 @@ python scripts/InputData.py
 Below are sample outputs from OptiRanker. Click any image for full resolution:
 
 <div style="display: flex; flex-wrap: wrap; gap: 10px;">
-    <a href="results/Fig1A overflow.png" target="_blank"><img src="results/Fig1A overflow.png" alt="Overflow of OptiRanker" width="200"/></a>
-    <a href="results/Fig2 - 100simX20iX20px20D.png" target="_blank"><img src="results/Fig2 - 100simX20iX20px20D.png" alt="100 Simulations with 20x20x20 inputs" width="200"/></a>
-    <a href="results/Figure3 - InformedSelection.png" target="_blank"><img src="results/Figure3 - InformedSelection.png" alt="Informed Selection Process" width="200"/></a>
-    <a href="results/Figure 4 - HeatMaps .png" target="_blank"><img src="results/Figure 4 - HeatMaps .png" alt="Optimization Subsets Heatmap" width="200"/></a>
-    <a href="results/Figure 5 - In-silico.png" target="_blank"><img src="results/Figure 5 - In-silico.png" alt="Optimization Subsets Heatmap" width="200"/></a>
+    <a href="results/Figure1.png" target="_blank"><img src="results/Figure1.png" alt="Overflow of OptiRanker" width="200"/></a>
+    <a href="results/Figure2.png" target="_blank"><img src="results/Figure2.png" alt="100 Simulations with 20x20x20 inputs" width="200"/></a>
+    <a href="results/Figure3.png" target="_blank"><img src="results/Figure3.png" alt="Informed Selection Process" width="200"/></a>
+    <a href="results/Figure4.png" target="_blank"><img src="results/Figure4.png" alt="Optimization Subsets Heatmap" width="200"/></a>
+    <a href="results/Figure5.png" target="_blank"><img src="results/Figure5.png" alt="In-Silico Trial" width="200"/></a>
 </div>
 
 ---
